@@ -211,7 +211,7 @@ function exportAccountingToCsv(accounting) {
 
   const salesPoint = typeof getSalesPoint === "function" ? getSalesPoint() : "";
   const isoDate = accounting.date || new Date().toISOString().slice(0, 10);
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = (getData(PAGE_PRODUCTS) || []).filter(p => p.quantity > 0);
   const productsById = new Map(products.map((p) => [p.id, p]));
 
   const productHeaderMap = {
@@ -224,8 +224,13 @@ function exportAccountingToCsv(accounting) {
     precioUnitario: "Prec.Unit.",
     importe: "Importe",
   };
+
   const productColumns = Object.keys(productHeaderMap);
-  const productRows = (accounting.products || []).map((ap) => {
+
+  const accProdFilter = accounting.products.filter(ap => productsById.has(ap.productId));
+  const productRows = (accProdFilter || [])
+    //.filter(ap => productsById.has(ap.productId)) // solo productos con stock > 0
+    .map((ap) => {
     const product = productsById.get(ap.productId);
     return {
       producto: product?.name ?? ap.productId,
