@@ -423,7 +423,16 @@ async function refreshOpenAccountingData() {
  */
 function buildAccountingProductsForDate(date) {
   const yesterday = getYesterday(date);
-  const products = getData(PAGE_PRODUCTS) || [];
+  //const today = getToday();
+  //const flagDate = date < today;
+  const accounting = getData(PAGE_ACCOUNTING).find(a => a.date === date) || null;
+  console.log(">>>>>>>>>>>>>>>accounting: ", accounting);
+  //const flagClosed = accounting && accounting.closed;
+  if (accounting && accounting.closed) return accounting.products;
+
+  const products = (getData(PAGE_PRODUCTS) || []).filter(p => p.quantity > 0);
+  
+  //const products = (getData(PAGE_PRODUCTS) || []).filter(p => !flag && p.quantity > 0);
   const movements = getData(PAGE_MOVEMENTS) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
   const lastAccounting = getLastAccounting();
