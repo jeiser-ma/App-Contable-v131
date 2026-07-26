@@ -261,13 +261,13 @@ function exportAccountingToCsv(accounting) {
   const yesterdayEntries = yesterdayMovements.filter(m => m.type === MOVEMENTS_TYPES.IN);
   const entriesRows = (yesterdayEntries || []).map((en) => {
     const product = productsById.get(en.productId);
-    return csvFixedRow([product?.name ?? en.productId, csvExportNumber(en.quantity)])
+    return csvFixedRow([product?.name ?? en.productId, csvExportNumber(en.quantity), en.note])
   });
   // Salidas de ayer
   const yesterdayExits = yesterdayMovements.filter(m => m.type === MOVEMENTS_TYPES.OUT);
   const existsRows = (yesterdayExits || []).map((ex) => {
     const product = productsById.get(ex.productId);
-    return csvFixedRow([product?.name ?? ex.productId, csvExportNumber(ex.quantity)])
+    return csvFixedRow([product?.name ?? ex.productId, csvExportNumber(ex.quantity), ex.note])
   });
 
   const lines = [
@@ -292,9 +292,11 @@ function exportAccountingToCsv(accounting) {
     ...expenseRows,
     csvFixedRow([]),
     csvFixedRow(["ENTRADAS"]),
+    csvFixedRow(["Producto", "Cantidad", "Observaciones"]),
     ...entriesRows,
     csvFixedRow([]),
     csvFixedRow(["SALIDAS"]),
+    csvFixedRow(["Producto", "Cantidad", "Observaciones"]),
     ...existsRows,
   ];
 
