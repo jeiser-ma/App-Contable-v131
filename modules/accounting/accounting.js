@@ -166,9 +166,11 @@ async function setupAccountingFABs() {
   clearBtnFABs();
 
   // Configurar el botón de scroll hacia arriba
-  setupBtnFAB(ID_CONTROL_BTN_FAB_UP, "bi-chevron-bar-up", "btn-primary", () => scrollUpAccounting());
+  setupBtnFAB(ID_CONTROL_BTN_FAB_UP, "bi-chevron-bar-up", "btn-primary", scrollPageTop);
   // Configurar el botón de scroll hacia abajo
-  setupBtnFAB(ID_CONTROL_BTN_FAB_DOWN, "bi-chevron-bar-down", "btn-primary", () => scrollDownAccounting());
+  setupBtnFAB(ID_CONTROL_BTN_FAB_DOWN, "bi-chevron-bar-down", "btn-primary", scrollPageBottom);
+
+  initializeScrollFABs(ID_CONTROL_BTN_FAB_UP,ID_CONTROL_BTN_FAB_DOWN);
 
 }
 
@@ -450,7 +452,7 @@ function buildAccountingProductsForDate(date) {
   if (accounting && accounting.closed) return accounting.products;
 
   const products = (getData(PAGE_PRODUCTS) || []).filter(p => p.quantity > 0);
-  
+
   //const products = (getData(PAGE_PRODUCTS) || []).filter(p => !flag && p.quantity > 0);
   const movements = getData(PAGE_MOVEMENTS) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
@@ -614,7 +616,7 @@ async function renderAccountingProducts() {
     //const products = getData(PAGE_PRODUCTS);
     filteredProducts = currentAccounting.products.filter((ap) => {
       const product = productsAll.find((p) => p.id === ap.productId);
-      if (!product) {console.error(`Producto no encontrado: ${ap.productId}`); return false;}
+      if (!product) { console.error(`Producto no encontrado: ${ap.productId}`); return false; }
       return product.name.toLowerCase().includes(ACCOUNTING_STATE.searchText.toLowerCase());
     });
   }
@@ -926,7 +928,7 @@ function openTransferSalesModal() {
   initModalModule(MODAL_TRANSFER_SALES);
   // Configurar el header del modal
   setModalHeader(MODAL_TRANSFER_SALES, false);
-  
+
   // Limpiar errores anteriores del input
   clearInputError(ID_INPUT_TRANSFER_SALES);
   // Establecer el valor del input
@@ -1033,7 +1035,7 @@ function reopenAccounting() {
 
   saveAccounting();
   renderAccounting();
-  showToast("Contabilidad reabierta correctamente", TOAST_COLORS.SUCCESS,3);
+  showToast("Contabilidad reabierta correctamente", TOAST_COLORS.SUCCESS, 3);
 }
 
 /**
@@ -1045,18 +1047,18 @@ function confirmCloseAccounting() {
 
   // Validar que no haya productos sin inventario
   if (validateInventory()) {
-    showToast("No se puede cerrar: faltan productos sin inventario", TOAST_COLORS.DANGER,3);
+    showToast("No se puede cerrar: faltan productos sin inventario", TOAST_COLORS.DANGER, 3);
     return;
   }
 
   // Validar que haya ventas en efectivo o transferencia
   if (currentAccounting.cashSales === 0 || currentAccounting.transferSales === 0) {
-    showToast("No se puede cerrar: faltan ventas en efectivo o transferencia", TOAST_COLORS.DANGER,3);
+    showToast("No se puede cerrar: faltan ventas en efectivo o transferencia", TOAST_COLORS.DANGER, 3);
     return;
   }
 
   if (currentAccounting.closed) {
-    showToast("Esta contabilidad ya está cerrada", TOAST_COLORS.PRIMARY,3);
+    showToast("Esta contabilidad ya está cerrada", TOAST_COLORS.PRIMARY, 3);
     return;
   }
 
@@ -1137,7 +1139,7 @@ function closeAccounting() {
 
   saveAccounting();
   renderAccounting();
-  showToast("Contabilidad cerrada correctamente", TOAST_COLORS.SUCCESS,3);
+  showToast("Contabilidad cerrada correctamente", TOAST_COLORS.SUCCESS, 3);
 }
 
 
