@@ -40,6 +40,11 @@ async function loadPage(page) {
     hideModuleControls();
   }
 
+  // Limpiar los botones FAB de la página 
+  // (si se carga una página nueva, se limpian los botones FAB de la página anterior)
+  // esto es necesario para que no se acumulen botones FAB en la página
+  clearBtnFABs();
+
   // Ejecutar el hook de la página si existe
   await executePageHook(page);
 }
