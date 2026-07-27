@@ -124,6 +124,9 @@ async function onAccountingPageLoaded() {
   // Configurar controles del módulo
   await setupAccountingControls();
 
+  // Configurar botones FAB
+  await setupAccountingFABs();
+
   // Configurar eventos de botones
   document.getElementById(ID_BTN_ADD_CASH_SALES).onclick = () => openCashSalesModal();
   document.getElementById(ID_BTN_ADD_TRANSFER_SALES).onclick = () => openTransferSalesModal();
@@ -158,6 +161,22 @@ function exportCurrentAccountingToCsv() {
  * Configura los controles del módulo de contabilidad
  * @returns {void}
  */
+async function setupAccountingFABs() {
+  // Limpiar el contenido de los botones FAB
+  clearBtnFABs();
+
+  // Configurar el botón de scroll hacia arriba
+  setupBtnFAB(ID_CONTROL_BTN_FAB_UP, "bi-chevron-bar-up", "btn-primary", () => scrollUpAccounting());
+  // Configurar el botón de scroll hacia abajo
+  setupBtnFAB(ID_CONTROL_BTN_FAB_DOWN, "bi-chevron-bar-down", "btn-primary", () => scrollDownAccounting());
+
+}
+
+
+/**
+ * Configura los controles del módulo de contabilidad
+ * @returns {void}
+ */
 async function setupAccountingControls() {
   // Limpiar el contenido de los controles del módulo
   clearModuleControlsContent();
@@ -165,10 +184,10 @@ async function setupAccountingControls() {
   // Mostrar los controles del módulo
   showModuleControls();
 
-  // la contabilidad no tiene control de búsqueda
-  //await loadModuleControl(CONTROL_SEARCH_INPUT);
+  // Cargar el control de búsqueda
+  await loadModuleControl(CONTROL_SEARCH_INPUT);
   // Configurar el control de búsqueda
-  //setupSearchInput(PAGE_ACCOUNTING, renderAccounting);
+  setupSearchInput(PAGE_ACCOUNTING, renderAccounting);
 
   // la contabilidad no tiene botón de agregar
   //await loadModuleControl(CONTROL_BTN_ADD);
@@ -589,8 +608,21 @@ async function renderAccountingProducts() {
   // Limpiar la lista
   list.replaceChildren();
 
+  // Filtro por texto de búsqueda (busca en nombre del producto)
+  let filteredProducts = currentAccounting.products;
+  if (ACCOUNTING_STATE.searchText) {
+    //const products = getData(PAGE_PRODUCTS);
+    filteredProducts = currentAccounting.products.filter((ap) => {
+      const product = productsAll.find((p) => p.id === ap.productId);
+      if (!product) {console.error(`Producto no encontrado: ${ap.productId}`); return false;}
+      return product.name.toLowerCase().includes(ACCOUNTING_STATE.searchText.toLowerCase());
+    });
+  }
+
+
   // Recorrer los productos
-  currentAccounting.products.forEach(async accountingProd => {
+  //currentAccounting.products.forEach(async accountingProd => {
+  filteredProducts.forEach(async accountingProd => {
     const product = productsAll.find(p => p.id === accountingProd.productId);
     if (!product) return;
 

@@ -378,7 +378,7 @@ function filterMovements(movements) {
   // Filtro por tipo (in/out)
   if (MOVEMENTS_STATE.chipFiltered) {
     filtered = filtered.filter(
-      (m) => m.type === MOVEMENTS_STATE.chipFiltered //.toUpperCase()
+      (m) => m.type.toUpperCase() === MOVEMENTS_STATE.chipFiltered.toUpperCase()
     );
   }
 

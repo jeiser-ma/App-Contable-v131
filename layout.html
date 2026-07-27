@@ -1,340 +1,283 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
 
-    <!-- Mobile first -->
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
-    />
+<head>
+  <meta charset="UTF-8" />
 
-    <!-- PWA: pantalla completa y tema -->
-    <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0d6efd" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Contable" />
+  <!-- Mobile first -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 
-    <title>App Contable</title>
+  <!-- PWA: pantalla completa y tema -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0d6efd" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Contable" />
 
-    <!-- Bootstrap -->
-    <link rel="stylesheet" href="css/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="css/styles.css" />
+  <title>App Contable</title>
 
-    <!-- Estilos propios -->
-    <link rel="stylesheet" href="css/styles.css" />
-  </head>
+  <!-- Bootstrap -->
+  <link rel="stylesheet" href="css/bootstrap.min.css" />
+  <link rel="stylesheet" href="css/bootstrap-icons.min.css" />
+  <link rel="stylesheet" href="css/styles.css" />
 
-  <body class="bg-light">
-    <!-- ===== HEADER ===== -->
-    <nav class="navbar navbar-dark bg-primary px-1 fixed-top border-bottom">
-      <div
-        class="container-fluid d-flex justify-content-between align-items-center"
-      >
-        <!-- Izquierda: icono app + título -->
-        <div class="d-flex align-items-center gap-4">
-          <img
-            src="img/app-icon.png"
-            alt="App Contable"
-            title="App Contable"
-            width="28"
-            height="28"
-          />
+  <!-- Estilos propios -->
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
 
-          <!-- Icono + título del módulo -->
-          <div class="d-flex align-items-center gap-2">
-            <i id="moduleIcon" class="bi bi-house fs-5"></i>
-            <span id="pageTitle" class="navbar-brand fw-semibold mb-0">
-              Inicio
-            </span>
-          </div>
-        </div>
+<body class="bg-light">
+  <!-- ===== HEADER ===== -->
+  <nav class="navbar navbar-dark bg-primary px-1 fixed-top border-bottom">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <!-- Izquierda: icono app + título -->
+      <div class="d-flex align-items-center gap-4">
+        <img src="img/app-icon.png" alt="App Contable" title="App Contable" width="28" height="28" />
 
-        <!-- Derecha: menú contextual + botón salir -->
+        <!-- Icono + título del módulo -->
         <div class="d-flex align-items-center gap-2">
-          <!-- Botón salir -->
-          <button
-            id="btnLogout"
-            class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center"
-            style="width: 36px; height: 36px"
-            title="Salir"
-          >
-            <i class="bi bi-box-arrow-right"></i>
+          <i id="moduleIcon" class="bi bi-house fs-5"></i>
+          <span id="pageTitle" class="navbar-brand fw-semibold mb-0">
+            Inicio
+          </span>
+        </div>
+      </div>
+
+      <!-- Derecha: menú contextual + botón salir -->
+      <div class="d-flex align-items-center gap-2">
+        <!-- Botón salir -->
+        <button id="btnLogout"
+          class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center"
+          style="width: 36px; height: 36px" title="Salir">
+          <i class="bi bi-box-arrow-right"></i>
+        </button>
+
+        <!-- Menú contextual -->
+        <div class="dropdown">
+          <button class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center"
+            style="width: 36px; height: 36px" type="button" id="btnContextMenu" data-bs-toggle="dropdown"
+            aria-expanded="false" title="Menú">
+            <i class="bi bi-three-dots-vertical"></i>
           </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="btnContextMenu">
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuProducts">
+                <i class="bi bi-box text-primary"></i> Productos
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuMovements">
+                <i class="bi bi-arrow-repeat text-success"></i> Movimientos
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuExpenses">
+                <i class="bi bi-cash-coin text-danger"></i> Gastos
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuInventory">
+                <i class="bi bi-clipboard-data text-info"></i> Inventario
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuFinances">
+                <i class="bi bi-wallet2 text-success"></i> Finanzas
+              </a>
+            </li>
+            <li>
+              <hr class="dropdown-divider" />
+            </li>
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuStores">
+                <i class="bi bi-shop text-primary"></i> Puntos de Venta
+              </a>
+            </li>
 
-          <!-- Menú contextual -->
-          <div class="dropdown">
-            <button
-              class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center"
-              style="width: 36px; height: 36px"
-              type="button"
-              id="btnContextMenu"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-              title="Menú"
-            >
-              <i class="bi bi-three-dots-vertical"></i>
-            </button>
-            <ul
-              class="dropdown-menu dropdown-menu-end"
-              aria-labelledby="btnContextMenu"
-            >
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuProducts">
-                  <i class="bi bi-box text-primary"></i> Productos
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuMovements">
-                  <i class="bi bi-arrow-repeat text-success"></i> Movimientos
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuExpenses">
-                  <i class="bi bi-cash-coin text-danger"></i> Gastos
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuInventory">
-                  <i class="bi bi-clipboard-data text-info"></i> Inventario
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuFinances">
-                  <i class="bi bi-wallet2 text-success"></i> Finanzas
-                </a>
-              </li>
-              <li><hr class="dropdown-divider" /></li>
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuStores">
-                  <i class="bi bi-shop text-primary"></i> Puntos de Venta
-                </a>
-              </li>
-              
-              <li>
-                <a class="dropdown-item" href="#" id="contextMenuSettings">
-                  <i class="bi bi-gear text-warning"></i> Ajustes
-                </a>
-              </li>
-            </ul>
-          </div>
+            <li>
+              <a class="dropdown-item" href="#" id="contextMenuSettings">
+                <i class="bi bi-gear text-warning"></i> Ajustes
+              </a>
+            </li>
+          </ul>
         </div>
       </div>
-    </nav>
+    </div>
+  </nav>
 
-    <!-- ===== CONTENIDO DINÁMICO ===== -->
-    <main class="container-fluid" style="margin-top: 65px; margin-bottom: 80px;">
-      <!-- ===== COMPONENTES REUTILIZABLES (OCULTOS POR DEFECTO) ===== -->
-      <div id="modules-controls-container" class="px-2 d-none">
-        <!-- Fila de filtros: Buscador + Botones Add -->
-        <div
-          id="container-searchInput-btnAdd"
-          class="fila-1 d-flex align-items-center justify-content-between gap-2 mb-2 d-non"
-        >
-          <!-- Se inserta el componente search-input -->
-          <!-- Se inserta el componente btn-add -->
-        </div>
-
-        <!-- Fila de filtros: Fecha + Ordenamiento -->
-        <div
-          id="container-dateFilter-orderBy"
-          class="fila-2 d-flex gap-2 mb-2 d-non"
-        >
-          <!-- Se inserta el componente date-filter -->
-          <!-- Se inserta el componente order-by -->
-        </div>
-
-        <!-- Fila de filtros: Chips -->
-        <div
-          id="container-chipsFilter"
-          class="fila-3 d-flex align-items-center gap-2 mb-2 d-non"
-        >
-          <!-- Se inserta el componente chips-filter -->
-        </div>
-
-        <!-- Fila de filtros: Contador + Botón limpiar filtros -->
-        <div
-          id="container-listCounter-btnClearFilters"
-          class="fila-4 d-flex align-items-center justify-content-end  gap-2 mb-2 d-non"
-        >
-          <!-- Se inserta el componente list-counter -->
-          <!-- Se inserta el componente btn-clear-filters -->
-        </div>
-      </div>
-      <!-- ===== FIN COMPONENTES REUTILIZABLES ===== -->
-
-      <!-- AQUÍ SE INYECTAN LAS PÁGINAS -->
-      <div id="pages-container"></div>
-      <!-- ===== FIN PÁGINAS ===== -->
-    </main>
-
-    <!-- ===== NAVBAR INFERIOR (MÓVIL) ===== -->
-    <nav class="bg-light fixed-bottom border-top px-2 py-2">
-      <div class="d-flex align-items-end w-100">
-        <!-- HOME -->
-        <button
-          class="btn btn-link btn-chip rounded-pill text-decoration-none bottom-nav-btn w-100"
-          id="navHome"
-        >
-          <i class="bi bi-house-door fs-4"></i><br />
-          <small>Inicio</small>
-        </button>
-
-        <!-- BOTÓN ADICIONAR (con cards flotantes) -->
-        <div class="w-100 d-flex justify-content-center">
-          <button
-            class="btn btn-link text-decoration-none rounded-circle bottom-nav-btn position-absolute start-50 translate-middle-x"
-            id="navAdd"
-            style="bottom: 20px;"
-          >
-            <i class="bi bi-plus-circle-fill text-primary" style="font-size: 40px;"></i>
-          </button>
-          <small class="text-primary btn-chip">Adicionar</small>
-        </div>
-
-        <!-- CONTABILIDAD -->
-        <button
-          class="btn btn-link btn-chip rounded-pill text-decoration-none bottom-nav-btn w-100"
-          id="navAccounting"
-        >
-          <i class="bi bi-calculator fs-4"></i><br />
-          <small>Contabilidad</small>
-        </button>
+  <!-- ===== CONTENIDO DINÁMICO ===== -->
+  <main class="container-fluid" style="margin-top: 65px; margin-bottom: 80px;">
+    <!-- ===== COMPONENTES REUTILIZABLES (OCULTOS POR DEFECTO) ===== -->
+    <div id="modules-controls-container" class="px-2 d-none">
+      <!-- Fila de filtros: Buscador + Botones Add -->
+      <div id="container-searchInput-btnAdd"
+        class="fila-1 d-flex align-items-center justify-content-between gap-2 mb-2 d-non">
+        <!-- Se inserta el componente search-input -->
+        <!-- Se inserta el componente btn-add -->
       </div>
 
-      <!-- Cards flotantes -->
-      <div
-        id="floatingCards"
-        class="floating-cards d-flex flex-column gap-2 position-absolute bottom-100 start-0 end-0 mb-4 px-5 d-none"
-      >
-        <!-- Card: Agregar Producto -->
-        <button
-          class="card shadow-sm bg-light p-2 floating-card"
-          id="floatingCardProduct"
-        >
-          <div class="d-inline-flex align-items-center gap-3">
-            <div
-              class="rounded-circle bg-primary d-flex align-items-center justify-content-center"
-              style="width: 36px; height: 36px"
-            >
-              <i class="bi bi-box text-white"></i>
-            </div>
-            <span class="flex-grow-1 text-start text-muted"
-              >Agregar Producto</span
-            >
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-        </button>
-
-        <!-- Card: Agregar Movimiento -->
-        <button
-          class="card shadow-sm bg-light p-2 floating-card"
-          id="floatingCardMovement"
-        >
-          <div class="d-flex align-items-center gap-3">
-            <div
-              class="rounded-circle bg-success d-flex align-items-center justify-content-center"
-              style="width: 36px; height: 36px"
-            >
-              <i class="bi bi-arrow-repeat text-white"></i>
-            </div>
-            <span class="flex-grow-1 text-start text-muted"
-              >Agregar Movimiento</span
-            >
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-        </button>
-
-        <!-- Card: Agregar Gasto -->
-        <button
-          class="card shadow-sm bg-light p-2 floating-card"
-          id="floatingCardExpense"
-        >
-          <div class="d-flex align-items-center gap-3">
-            <div
-              class="rounded-circle bg-danger d-flex align-items-center justify-content-center"
-              style="width: 36px; height: 36px"
-            >
-              <i class="bi bi-cash-coin text-white"></i>
-            </div>
-            <span class="flex-grow-1 text-start text-muted">Agregar Gasto</span>
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-        </button>
-
-        <!-- Card: Realizar Inventario  -->
-        <button
-          class="card shadow-sm bg-light p-2 floating-card"
-          id="floatingCardInventory"
-        >
-          <div class="d-flex align-items-center gap-3">
-            <div
-              class="rounded-circle bg-info d-flex align-items-center justify-content-center"
-              style="width: 36px; height: 36px"
-            >
-              <i class="bi bi-clipboard-data text-white"></i>
-            </div>
-            <span class="flex-grow-1 text-start text-muted"
-              >Realizar Inventario</span
-            >
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-        </button>
+      <!-- Fila de filtros: Fecha + Ordenamiento -->
+      <div id="container-dateFilter-orderBy" class="fila-2 d-flex gap-2 mb-2 d-non">
+        <!-- Se inserta el componente date-filter -->
+        <!-- Se inserta el componente order-by -->
       </div>
-    </nav>
 
-    <!-- ===== AQUI SE CARGAN LOS MODALS ===== -->
-    <div id="modals-container"></div>
+      <!-- Fila de filtros: Chips -->
+      <div id="container-chipsFilter" class="fila-3 d-flex align-items-center gap-2 mb-2 d-non">
+        <!-- Se inserta el componente chips-filter -->
+      </div>
 
-    <!-- ===== AQUI SE CARGAN LOS COMPONENTES REUTILIZABLES ===== -->
-    <div id="components-container"></div>
+      <!-- Fila de filtros: Contador + Botón limpiar filtros -->
+      <div id="container-listCounter-btnClearFilters"
+        class="fila-4 d-flex align-items-center justify-content-end  gap-2 mb-2 d-non">
+        <!-- Se inserta el componente list-counter -->
+        <!-- Se inserta el componente btn-clear-filters -->
+      </div>
+    </div>
+    <!-- ===== FIN COMPONENTES REUTILIZABLES ===== -->
 
-    <!-- ===== SCRIPTS ===== -->
-    <!-- Core/Shared JS -->
-    <script src="js/bootstrap.bundle.min.js"></script>
-    <script src="components/scanner/html5-qrcode.min.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/configs.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/exports.js"></script>
-    <script src="js/imports.js"></script>
-    <script src="js/modal-helpers.js"></script>
-    <script src="js/form-helpers.js"></script>
-    <script src="js/router.js"></script>
-    <script src="components/search-input/search-input.js"></script>
-    <script src="components/btn-add/btn-add.js"></script>
-    <script src="components/btn-scan-product/btn-scan-product.js"></script>
-    <script src="components/order-by/order-by.js"></script>
-    <script src="components/date-filter/date-filter.js"></script>
-    <script src="components/chips-filter/chips-filter.js"></script>
-    <script src="components/btn-clear-filters/btn-clear-filters.js"></script>
-    <script src="components/list-counter/list-counter.js"></script>
-    <script src="js/modules-controls.js"></script>
-    <script src="js/modules-modals.js"></script>
-    <script src="js/navigation.js"></script>
+    <!-- AQUÍ SE INYECTAN LAS PÁGINAS -->
+    <div id="pages-container"></div>
+    <!-- ===== FIN PÁGINAS ===== -->
 
-    <!-- Páginas compartidas JS -->
-    <script src="js/home.js"></script>
-    <script src="js/settings.js"></script>
+    <!-- ===== CONTENEDOR DE BOTONES FAB ===== -->
+    <div id="btn-fab-container" class="position-fixed bottom-0 end-0 mb-5 p-4 d-flex flex-column gap-2">
+      <!-- Se inserta el componente btn-fab dinámicamente. 
+       Tantos botones como se necesiten-->
+    </div>
+  </main>
 
-    <!-- Componentes JS -->
-    <script src="components/snackbar/undo.js"></script>
-    <script src="components/confirm-delete/confirm-delete.js"></script>
-    <script src="components/confirm-action/confirm-action.js"></script>
-    <script src="components/toast/toast.js"></script>
-    <script src="components/empty-state/empty-state.js"></script>
-    <script src="components/badge/badge.js"></script>
-    <script src="components/scanner/scanner.js"></script>
 
-    <!-- Módulos JS -->
-    <script src="modules/products/products.js"></script>
-    <script src="modules/movements/movements.js"></script>
-    <script src="modules/inventory/inventory.js"></script>
-    <script src="modules/expenses/expenses.js"></script>
-    <script src="modules/accounting/accounting.js"></script>
-    <script src="modules/stores/stores.js"></script>
-    <script src="modules/finances/finances.js"></script>
-  </body>
+  <!-- ===== NAVBAR INFERIOR (MÓVIL) ===== -->
+  <nav class="bg-light fixed-bottom border-top px-2 py-2">
+    <div class="d-flex align-items-end w-100">
+      <!-- HOME -->
+      <button class="btn btn-link btn-chip rounded-pill text-decoration-none bottom-nav-btn w-100" id="navHome">
+        <i class="bi bi-house-door fs-4"></i><br />
+        <small>Inicio</small>
+      </button>
+
+      <!-- BOTÓN ADICIONAR (con cards flotantes) -->
+      <div class="w-100 d-flex justify-content-center">
+        <button
+          class="btn btn-link text-decoration-none rounded-circle bottom-nav-btn position-absolute start-50 translate-middle-x"
+          id="navAdd" style="bottom: 20px;">
+          <i class="bi bi-plus-circle-fill text-primary" style="font-size: 40px;"></i>
+        </button>
+        <small class="text-primary btn-chip">Adicionar</small>
+      </div>
+
+      <!-- CONTABILIDAD -->
+      <button class="btn btn-link btn-chip rounded-pill text-decoration-none bottom-nav-btn w-100" id="navAccounting">
+        <i class="bi bi-calculator fs-4"></i><br />
+        <small>Contabilidad</small>
+      </button>
+    </div>
+
+    <!-- Cards flotantes -->
+    <div id="floatingCards"
+      class="floating-cards d-flex flex-column gap-2 position-absolute bottom-100 start-0 end-0 mb-4 px-5 d-none">
+      <!-- Card: Agregar Producto -->
+      <button class="card shadow-sm bg-light p-2 floating-card" id="floatingCardProduct">
+        <div class="d-inline-flex align-items-center gap-3">
+          <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center"
+            style="width: 36px; height: 36px">
+            <i class="bi bi-box text-white"></i>
+          </div>
+          <span class="flex-grow-1 text-start text-muted">Agregar Producto</span>
+          <i class="bi bi-chevron-right text-muted"></i>
+        </div>
+      </button>
+
+      <!-- Card: Agregar Movimiento -->
+      <button class="card shadow-sm bg-light p-2 floating-card" id="floatingCardMovement">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-circle bg-success d-flex align-items-center justify-content-center"
+            style="width: 36px; height: 36px">
+            <i class="bi bi-arrow-repeat text-white"></i>
+          </div>
+          <span class="flex-grow-1 text-start text-muted">Agregar Movimiento</span>
+          <i class="bi bi-chevron-right text-muted"></i>
+        </div>
+      </button>
+
+      <!-- Card: Agregar Gasto -->
+      <button class="card shadow-sm bg-light p-2 floating-card" id="floatingCardExpense">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-circle bg-danger d-flex align-items-center justify-content-center"
+            style="width: 36px; height: 36px">
+            <i class="bi bi-cash-coin text-white"></i>
+          </div>
+          <span class="flex-grow-1 text-start text-muted">Agregar Gasto</span>
+          <i class="bi bi-chevron-right text-muted"></i>
+        </div>
+      </button>
+
+      <!-- Card: Realizar Inventario  -->
+      <button class="card shadow-sm bg-light p-2 floating-card" id="floatingCardInventory">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-circle bg-info d-flex align-items-center justify-content-center"
+            style="width: 36px; height: 36px">
+            <i class="bi bi-clipboard-data text-white"></i>
+          </div>
+          <span class="flex-grow-1 text-start text-muted">Realizar Inventario</span>
+          <i class="bi bi-chevron-right text-muted"></i>
+        </div>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ===== AQUI SE CARGAN LOS MODALS ===== -->
+  <div id="modals-container"></div>
+
+  <!-- ===== AQUI SE CARGAN LOS COMPONENTES REUTILIZABLES ===== -->
+  <div id="components-container"></div>
+
+  <!-- ===== SCRIPTS ===== -->
+  <!-- Core/Shared JS -->
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="components/scanner/html5-qrcode.min.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/configs.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/exports.js"></script>
+  <script src="js/imports.js"></script>
+  <script src="js/modal-helpers.js"></script>
+  <script src="js/form-helpers.js"></script>
+  <script src="js/router.js"></script>
+  <script src="components/search-input/search-input.js"></script>
+  <script src="components/btn-add/btn-add.js"></script>
+  <script src="components/btn-scan-product/btn-scan-product.js"></script>
+  <script src="components/order-by/order-by.js"></script>
+  <script src="components/date-filter/date-filter.js"></script>
+  <script src="components/chips-filter/chips-filter.js"></script>
+  <script src="components/btn-clear-filters/btn-clear-filters.js"></script>
+  <script src="components/list-counter/list-counter.js"></script>
+  <script src="js/modules-controls.js"></script>
+  <script src="js/modules-modals.js"></script>
+  <script src="js/navigation.js"></script>
+  
+  <!-- Páginas compartidas JS -->
+  <script src="js/home.js"></script>
+  <script src="js/settings.js"></script>
+  
+  <!-- Componentes JS -->
+  <script src="components/snackbar/undo.js"></script>
+  <script src="components/confirm-delete/confirm-delete.js"></script>
+  <script src="components/confirm-action/confirm-action.js"></script>
+  <script src="components/toast/toast.js"></script>
+  <script src="components/empty-state/empty-state.js"></script>
+  <script src="components/badge/badge.js"></script>
+  <script src="components/scanner/scanner.js"></script>
+  <script src="components/btn-fab/btn-fab.js"></script>
+
+  <!-- Módulos JS -->
+  <script src="modules/products/products.js"></script>
+  <script src="modules/movements/movements.js"></script>
+  <script src="modules/inventory/inventory.js"></script>
+  <script src="modules/expenses/expenses.js"></script>
+  <script src="modules/accounting/accounting.js"></script>
+  <script src="modules/stores/stores.js"></script>
+  <script src="modules/finances/finances.js"></script>
+</body>
+
 </html>

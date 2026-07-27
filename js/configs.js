@@ -562,6 +562,14 @@ const ID_CONTROL_CLEAR_SEARCH = "control-clear-search"; // botón de limpiar el 
 const ID_CONTROL_BTN_ADD = "control-btn-add"; // botón de agregar
 const ID_CONTROL_BTN_SCAN_PRODUCT = "control-btn-scan-product"; // botón de escanear código
 
+// ids de los componentes de los btn scroll
+const ID_BTN_FAB_TEMPLATE = "btn-fab-template"; // template del botón FAB
+const ID_BTN_FAB_CONTAINER = "btn-fab-container"; // contenedor del botón FAB
+const CLASS_CONTROL_BTN_FAB = "control-btn-fab"; // botón FAB
+const CLASS_CONTROL_BTN_FAB_ICON = "control-btn-fab-icon"; // icono del botón FAB
+const ID_CONTROL_BTN_FAB_UP = "control-btn-fab-up"; // botón FAB de scroll hacia arriba
+const ID_CONTROL_BTN_FAB_DOWN = "control-btn-fab-down"; // botón FAB de scroll hacia abajo
+
 // ids de los componentes de la date filter
 const ID_CONTROL_DATE_FILTER = "control-date-filter";
 

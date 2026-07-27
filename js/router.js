@@ -203,6 +203,10 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Loading component scanner");
     loadComponent("scanner");
 
+    // Cargamos el template del componente btn-fab (botón FAB para acciones rápidas)
+    console.log("Loading component btn-fab");
+    loadComponent("btn-fab");
+
     // Cargamos la página inicial
     console.log("Loading home page");
     loadPage(PAGE_HOME); //poner el home
