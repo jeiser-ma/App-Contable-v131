@@ -103,6 +103,8 @@ const ACCOUNTING_STATE = {
 window.ACCOUNTING_STATE = ACCOUNTING_STATE;
 
 let currentAccounting = null;
+// Obtener los productos
+const ALL_PRODUCTS = getData(PAGE_PRODUCTS) || [];
 
 /**
  * Hook que se ejecuta cuando se carga la página de contabilidad
@@ -148,8 +150,7 @@ function exportCurrentAccountingToCsv() {
     return;
   }
 
-  const products = getData(PAGE_PRODUCTS) || [];
-  const ok = exportAccountingToCsv(currentAccounting, products);
+  const ok = exportAccountingToCsv(currentAccounting, ALL_PRODUCTS);
   if (ok) {
     showToast("Contabilidad exportada correctamente.", TOAST_COLORS.SUCCESS, 3);
   }
@@ -170,7 +171,7 @@ async function setupAccountingFABs() {
   // Configurar el botón de scroll hacia abajo
   setupBtnFAB(ID_CONTROL_BTN_FAB_DOWN, "bi-chevron-bar-down", "btn-primary", scrollPageBottom);
 
-  initializeScrollFABs(ID_CONTROL_BTN_FAB_UP,ID_CONTROL_BTN_FAB_DOWN);
+  initializeScrollFABs(ID_CONTROL_BTN_FAB_UP, ID_CONTROL_BTN_FAB_DOWN);
 
 }
 
@@ -444,16 +445,11 @@ async function refreshOpenAccountingData() {
  */
 function buildAccountingProductsForDate(date) {
   const yesterday = getYesterday(date);
-  //const today = getToday();
-  //const flagDate = date < today;
   const accounting = getData(PAGE_ACCOUNTING).find(a => a.date === date) || null;
   console.log(">>>>>>>>>>>>>>>accounting: ", accounting);
-  //const flagClosed = accounting && accounting.closed;
   if (accounting && accounting.closed) return accounting.products;
 
-  const products = (getData(PAGE_PRODUCTS) || []).filter(p => p.quantity > 0);
-
-  //const products = (getData(PAGE_PRODUCTS) || []).filter(p => !flag && p.quantity > 0);
+  const products = ALL_PRODUCTS.filter(p => p.quantity > 0);
   const movements = getData(PAGE_MOVEMENTS) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
   const lastAccounting = getLastAccounting();
@@ -584,8 +580,10 @@ function validateInventory() {
  * @returns {void}
  */
 async function renderAccountingProducts() {
-  // Obtener el elemento <template> del DOM de la tarjeta de producto
-  const template = document.getElementById(ID_ACCOUNTING_PRODUCT_CARD_TEMPLATE);
+  if (!currentAccounting) {
+    console.error("contabilidad no encontrada");
+    return;
+  }
 
   // Obtener la lista de productos del DOM
   const list = document.getElementById(ID_ACCOUNTING_PRODUCTS_LIST);
@@ -595,44 +593,19 @@ async function renderAccountingProducts() {
     console.error("lista de productos no encontrada");
     return;
   }
-  if (!template) {
-    console.error("template de producto no encontrado");
-    return;
-  }
-  if (!currentAccounting) {
-    console.error("contabilidad no encontrada");
-    return;
-  }
-
-  // Obtener los productos
-  const productsAll = getData(PAGE_PRODUCTS) || [];
 
   // Limpiar la lista
   list.replaceChildren();
 
   // Filtro por texto de búsqueda (busca en nombre del producto)
-  let filteredProducts = currentAccounting.products;
-  if (ACCOUNTING_STATE.searchText) {
-    //const products = getData(PAGE_PRODUCTS);
-    filteredProducts = currentAccounting.products.filter((ap) => {
-      const product = productsAll.find((p) => p.id === ap.productId);
-      if (!product) { console.error(`Producto no encontrado: ${ap.productId}`); return false; }
-      return product.name.toLowerCase().includes(ACCOUNTING_STATE.searchText.toLowerCase());
-    });
-  }
-
+  let filteredProducts = filterAccountingProducts(currentAccounting.products);
 
   // Recorrer los productos
   //currentAccounting.products.forEach(async accountingProd => {
   filteredProducts.forEach(async accountingProd => {
-    const product = productsAll.find(p => p.id === accountingProd.productId);
-    if (!product) return;
-
-    // crear una copia del template
-    const clonedTemplate = template.content.cloneNode(true);
 
     // crear la tarjeta de producto
-    const newProductCard = await createProductCardFromTemplate(clonedTemplate, product.name, accountingProd);
+    const newProductCard = await createProductCardFromTemplate(accountingProd);
 
     if (!newProductCard) {
       console.error(`No se pudo crear el new product card con id: ${product.name}`);
@@ -640,28 +613,74 @@ async function renderAccountingProducts() {
     }
 
     list.appendChild(newProductCard);
-    console.log("new product card creado correctamente: ", product.name);
+    
   });
 }
+
+
+// ===============================
+// Filtrado de productos
+// ===============================
+
+/**
+ * Filtra productos usando los criterios de ACCOUNTING_STATE
+ * @param {Array} products - Lista de productos a filtrar
+ * @returns {Array} Lista de productos filtrados
+ */
+function filterAccountingProducts(accountingProducts) {
+  let filtered = [...accountingProducts];
+
+  // Filtro por texto de búsqueda (nombre del producto)
+  if (ACCOUNTING_STATE.searchText) {
+    //const productsAll = getData(PAGE_PRODUCTS) || [];
+    filtered = filtered.filter((ap) => {
+      const product = ALL_PRODUCTS.find((p) => p.id === ap.productId);
+      if (!product) { console.error(`Producto no encontrado: ${ap.productId}`); return false; }
+      return product.name.toLowerCase().includes(ACCOUNTING_STATE.searchText.toLowerCase());
+    });
+  }
+
+  // Filtro por fecha
+  // if (ACCOUNTING_STATE.filterDate) {
+  //   filtered = filtered.filter((p) => p.date === ACCOUNTING_STATE.filterDate);
+  // }
+
+  return filtered;
+}
+
 
 /**
  * Crea una nueva tarjeta de producto desde el template
  * @param {HTMLElement} clonedTemplate - Template de la tarjeta de producto
  * @param {string} productName - Nombre del producto
- * @param {Object} product - Producto a crear la tarjeta
+ * @param {Object} accountingProd - Producto a crear la tarjeta
  * @returns {HTMLElement} Tarjeta de producto creada
  */
-async function createProductCardFromTemplate(clonedTemplate, productName, product) {
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_NAME).textContent = productName;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_STOCK).textContent = product.yesterdayStock;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_ENTRIES).textContent = product.yesterdayEntries;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_EXITS).textContent = product.yesterdayExits;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_MISSING_INVENTORY_WARNING).classList.toggle("d-none", product.todayInventory !== null);
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_TODAY_INVENTORY).textContent = product.todayInventory === null ? "--" : product.todayInventory;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_SALES).textContent = product.sales === null ? "--" : product.sales;
+async function createProductCardFromTemplate(accountingProd) {
+  // Obtener el elemento <template> del DOM de la tarjeta de producto
+  const template = document.getElementById(ID_ACCOUNTING_PRODUCT_CARD_TEMPLATE);
+  if (!template) {
+    console.error("template de producto no encontrado");
+    return;
+  }
 
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_UNIT_PRICE).textContent = formatTo2(product.unitPrice);
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_TOTAL_AMOUNT).textContent = formatTo2(product.amount);
+  const prod = ALL_PRODUCTS.find(p => p.id === accountingProd.productId);
+  if (!prod) return;
+
+  // crear una copia del template
+  const clonedTemplate = template.content.cloneNode(true);
+
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_NAME).textContent = prod.name;
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_STOCK).textContent = accountingProd.yesterdayStock;
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_ENTRIES).textContent = accountingProd.yesterdayEntries;
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_EXITS).textContent = accountingProd.yesterdayExits;
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_MISSING_INVENTORY_WARNING).classList.toggle("d-none", accountingProd.todayInventory !== null);
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_TODAY_INVENTORY).textContent = accountingProd.todayInventory === null ? "--" : accountingProd.todayInventory;
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_SALES).textContent = accountingProd.sales === null ? "--" : accountingProd.sales;
+
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_UNIT_PRICE).textContent = formatTo2(accountingProd.unitPrice);
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_TOTAL_AMOUNT).textContent = formatTo2(accountingProd.amount);
+  console.log("new product card creado correctamente: ", prod.name);
   return clonedTemplate;
 
 }
@@ -1079,15 +1098,15 @@ function confirmCloseAccounting() {
 function updateProductsAccountingStock() {
   if (!currentAccounting?.products?.length) return;
 
-  const products = getData(PAGE_PRODUCTS) || [];
+  const productsUpdated = [...ALL_PRODUCTS];
   currentAccounting.products.forEach((accProduct) => {
-    const product = products.find((p) => p.id === accProduct.productId);
+    const product = productsUpdated.find((p) => p.id === accProduct.productId);
     if (product) {
       product.quantity = accProduct.todayInventory ?? 0;
     }
   });
 
-  setData(PAGE_PRODUCTS, products);
+  setData(PAGE_PRODUCTS, productsUpdated);
 }
 
 /**
