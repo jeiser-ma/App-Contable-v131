@@ -103,18 +103,42 @@ function undoDelete() {
     typeof undoFinanceFlowDelete === "function"
   ) {
     undoFinanceFlowDelete(UNDO_STATE.type, UNDO_STATE.data, UNDO_STATE.index);
+  } else if (UNDO_STATE.type === PAGE_MOVEMENTS) {
+    // Restaurar movimiento y reaplicar efecto en stock
+    const movement = UNDO_STATE.data;
+    const data = getData(PAGE_MOVEMENTS) || [];
+    data.push(movement);
+    setData(PAGE_MOVEMENTS, data);
+
+    if (movement && typeof updateProductQuantity === "function") {
+      const delta =
+        movement.type === MOVEMENTS_TYPES.IN
+          ? Number(movement.quantity) || 0
+          : -(Number(movement.quantity) || 0);
+      updateProductQuantity(movement.productId, delta);
+    }
+
+    if (typeof renderMovements === "function") {
+      renderMovements();
+    }
+  } else if (UNDO_STATE.type === PAGE_PRODUCTS) {
+    const data = getData(UNDO_STATE.type) || [];
+    data.push(UNDO_STATE.data);
+    setData(UNDO_STATE.type, data);
+    if (typeof syncProductInCache === "function" && UNDO_STATE.data) {
+      syncProductInCache(UNDO_STATE.data);
+    }
+    if (typeof renderProducts === "function") {
+      renderProducts();
+    }
   } else {
-    // Manejar otros tipos (productos, movimientos, etc.)
+    // Manejar otros tipos (inventario, gastos, stores, etc.)
     const data = getData(UNDO_STATE.type);
     data.push(UNDO_STATE.data);
     setData(UNDO_STATE.type, data);
 
     // Renderizar según el tipo
-    if (UNDO_STATE.type === PAGE_PRODUCTS && typeof renderProducts === "function") {
-      renderProducts();
-    } else if (UNDO_STATE.type === PAGE_MOVEMENTS && typeof renderMovements === "function") {
-      renderMovements();
-    } else if (UNDO_STATE.type === PAGE_INVENTORY && typeof renderInventory === "function") {
+    if (UNDO_STATE.type === PAGE_INVENTORY && typeof renderInventory === "function") {
       renderInventory();
     } else if (UNDO_STATE.type === PAGE_EXPENSES && typeof renderExpenses === "function") {
       renderExpenses();

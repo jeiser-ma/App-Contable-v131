@@ -62,6 +62,7 @@ function isInventoryClosed(inv) {
  */
 async function onInventoryPageLoaded() {
   console.log("onInventoryPageLoaded execution");
+  loadProductsCache();
 
   // Establecer fecha por defecto (hoy)
   const today = new Date().toISOString().split("T")[0];
@@ -155,8 +156,7 @@ function handleScanInventoryCode() {
   }
   openScannerModal({
     onSuccess: (decodedText) => {
-      const products = getData(PAGE_PRODUCTS) || [];
-      const found = products.find((p) => (p.codes || []).includes(decodedText));
+      const found = CACHE_PRODUCTS.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
         openAddInventoryModal(found.id);
       } else {
@@ -178,7 +178,7 @@ function handleScanInventoryCode() {
 function openAddInventoryModal(productId) {
 
   // Obtener el producto
-  const product = getDataById(PAGE_PRODUCTS, productId);
+  const product = getProductFromCache(productId);
   if (!product) {
     console.error("Producto no encontrado");
     return;
@@ -338,7 +338,7 @@ function getValidatedInventoryValuesFromModal() {
 
 
   // Validar que la suma no supere el stock total del producto
-  const product = getDataById(PAGE_PRODUCTS, INVENTORY_STATE.elementToEdit);
+  const product = getProductFromCache(INVENTORY_STATE.elementToEdit);
   if (product) {
     const productStock = product.quantity || 0;
     const totalInventory =
@@ -413,7 +413,7 @@ function openDeleteInventoryModal(inventoryId) {
     return;
   }
 
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = CACHE_PRODUCTS || [];
   const product = products.find((p) => p.id === inv.productId);
   const productName = product ? product.name : "Inventario";
 
@@ -532,7 +532,7 @@ function renderPendingInventoryList(products, allComplete = false) {
 function renderPartialInventoryList(inventoryCounts) {
   const list = document.getElementById(ID_PARTIAL_INVENTORY_LIST);
   const template = document.getElementById(ID_PARTIAL_CARD_TEMPLATE);
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = CACHE_PRODUCTS || [];
 
   if (!list || !template) return;
 
@@ -622,7 +622,7 @@ function renderPartialInventoryList(inventoryCounts) {
 function renderCompletedInventoryList(inventoryCounts) {
   const list = document.getElementById(ID_COMPLETED_INVENTORY_LIST);
   const template = document.getElementById(ID_COMPLETED_CARD_TEMPLATE);
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = CACHE_PRODUCTS || [];
 
   if (!list || !template) return;
 
@@ -682,7 +682,7 @@ function renderCompletedInventoryList(inventoryCounts) {
 function renderInventory() {
   const date =
     INVENTORY_STATE.filterDate || new Date().toISOString().split("T")[0];
-  const allProducts = getData(PAGE_PRODUCTS) || [];
+  const allProducts = CACHE_PRODUCTS || [];
   const allInventory = getData(PAGE_INVENTORY) || [];
 
   // Filtrar productos por búsqueda

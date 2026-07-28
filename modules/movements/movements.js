@@ -62,6 +62,7 @@ window.MOVEMENTS_STATE = MOVEMENTS_STATE;
  */
 async function onMovementsPageLoaded() {
   console.log("onMovementsPageLoaded execution");
+  loadProductsCache();
 
   // Cargar modal de movimientos
   console.log("Loading movement-modal");
@@ -154,8 +155,7 @@ function handleScanMovementCode() {
   }
   openScannerModal({
     onSuccess: (decodedText) => {
-      const products = getData(PAGE_PRODUCTS) || [];
-      const found = products.find((p) => (p.codes || []).includes(decodedText));
+      const found = CACHE_PRODUCTS.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
         openAddMovementModal();
         setInputValue(ID_MOVEMENT_PRODUCT, found.name);
@@ -367,9 +367,8 @@ function filterMovements(movements) {
 
   // Filtro por texto de búsqueda (busca en nombre del producto)
   if (MOVEMENTS_STATE.searchText) {
-    const products = getData(PAGE_PRODUCTS);
     filtered = filtered.filter((m) => {
-      const product = products.find((p) => p.id === m.productId);
+      const product = CACHE_PRODUCTS.find((p) => p.id === m.productId);
       if (!product) return false;
       return product.name.toLowerCase().includes(MOVEMENTS_STATE.searchText.toLowerCase());
     });
@@ -407,19 +406,7 @@ function sortMovements(movements) {
       return 0;
     }
 
-    // Para productos, obtener el nombre del producto
-    /*if (MOVEMENTS_STATE.orderBy === "name") {
-      const products = getData(PAGE_PRODUCTS);
-      const product1 = products.find((p) => p.id === a.productId);
-      const product2 = products.find((p) => p.id === b.productId);
-      if (!product1 || !product2) return 0;
-      //const comparison = product1.name.localeCompare(product2.name);
-      //return MOVEMENTS_STATE.orderDir === "asc" ? comparison : -comparison;
-      v1 = product1.name;
-      console.log("v1: ", v1);
-      v2 = product2.name;
-      console.log("v2: ", v2);
-    } */
+   
 
     // Normalizar strings para comparación
     if (typeof v1 === "string") {
@@ -446,8 +433,7 @@ function renderMovementsList(movements) {
   // Obtener los elementos del DOM
   const movementsList = document.getElementById(ID_MOVEMENTS_LIST);
   const movementTemplate = document.getElementById(ID_MOVEMENT_CARD_TEMPLATE);
-  // Obtener los productos
-  const products = getData(PAGE_PRODUCTS);
+  
 
   if (!movementsList || !movementTemplate) return;
 
@@ -463,7 +449,7 @@ function renderMovementsList(movements) {
   // Recorrer la lista de movimientos
   movements.forEach((m) => {
     // Obtener el producto
-    const product = products.find((p) => p.id === m.productId);
+    const product = CACHE_PRODUCTS.find((p) => p.id === m.productId);
     if (!product) {
       console.error("No se encontró el producto: ", m.productId);
       return; // Si no existe el producto, no mostrar el movimiento
@@ -569,8 +555,7 @@ function saveMovementFromModal() {
   }
 
   // Validar que el producto existe
-  const products = getData(PAGE_PRODUCTS);
-  const product = products.find(
+  const product = CACHE_PRODUCTS.find(
     (p) => p.name.toLowerCase() === productName.toLowerCase()
   );
   // Si el producto no existe, mostrar error
@@ -634,108 +619,55 @@ function saveMovementFromModal() {
 
   if (MOVEMENTS_STATE.elementToEdit) {
     // EDITAR: Actualizar movimiento existente
-
-
-
-    // Si el movimiento existe, revertir su efecto en el stock del producto anterior
-    // if (editingMovement && editingMovement.productId !== product.id) {
-    //   // Si estamos editando y se cambió el producto
-    //   // Revertir el efecto del movimiento anterior en el producto anterior
-    //   const oldProductId = editingMovement.productId;
-    //   // Verificar si el producto anterior es el mismo que el nuevo producto
-    //   const isSameProduct = oldProductId === product.id;
-
-    //   // Actualizar el stock del producto anterior
-    //   let deltaQuantity = editingMovement.type === MOVEMENTS_TYPES.IN ? -editingMovement.quantity : editingMovement.quantity;
-    //   let newQuantity = updateProductQuantity(oldProductId, deltaQuantity);
-    //   if (newQuantity === -1) {
-    //     setInputError(ID_MOVEMENT_QUANTITY, "Stock insuficiente para revertir el movimiento");
-    //     return;
-    //   }
-
-    // const updatedProducts = products.map((p) => {
-    //   // Revertir efecto en el producto anterior
-    //   if (p.id === oldProductId) {
-    //     if (editingMovement.type === MOVEMENTS_TYPES.IN) {
-    //       return { ...p, quantity: p.quantity - editingMovement.quantity };
-    //     } else {
-    //       return { ...p, quantity: p.quantity + editingMovement.quantity };
-    //     }
-    //   }
-    //   return p;
-    // });
-
-    //Aplicar el nuevo efecto en el producto (puede ser el mismo o diferente)
-    // const finalProducts = updatedProducts.map((p) => {
-    //   if (p.id === product.id) {
-    //     if (MOVEMENTS_STATE.currentType === MOVEMENTS_TYPES.IN) {
-    //       return { ...p, quantity: p.quantity + quantity };
-    //     } else {
-    //       return { ...p, quantity: p.quantity - quantity };
-    //     }
-    //   }
-    //   return p;
-    // });
-    // setData(PAGE_PRODUCTS, finalProducts);
-    //  }
-
-    // // Actualizar el movimiento
-    // const updatedMovements = movements.map((m) =>
-    //   m.id === MOVEMENTS_STATE.elementToEdit
-    //     ? {
-    //       ...m,
-    //       productId: product.id,
-    //       type: MOVEMENTS_STATE.currentType.toUpperCase(),
-    //       quantity: quantity,
-    //       date: date,
-    //       note: note || "",
-    //     }
-    //     : m
-    // );
-    // setData(PAGE_MOVEMENTS, updatedMovements);
-
-
-
-
-    // Primero:
-    // Si estamos editando el movimiento y se cambió el producto
-    // Revertir el efecto del movimiento anterior en el producto anterior
-    if (editingMovement && editingMovement.productId !== product.id) {
-      console.log("Revertir el efecto del movimiento anterior en el producto anterior");
-      console.log("editingMovement: ", editingMovement.productId);
-      console.log("product: ", product.id);
-      // Actualizar el stock del producto anterior
-      let deltaQuantity = editingMovement.type === MOVEMENTS_TYPES.IN ? -editingMovement.quantity : editingMovement.quantity;
-      let newQuantity = updateProductQuantity(editingMovement.productId, deltaQuantity);
-      console.log("newQuantity: ", newQuantity);
-      if (newQuantity === -1) {
-        // Si el stock es insuficiente, mostrar error y no revertir el movimiento
-        setInputError(ID_MOVEMENT_QUANTITY, "Stock insuficiente para revertir el movimiento");
-        return;
-      }
-    }
-
-    // Segundo:
-    // Aplicar el nuevo efecto en el producto actual (puede ser el mismo o diferente)
-    console.log("Aplicar el nuevo efecto en el producto actual (puede ser el mismo o diferente)");
-    let deltaQuantity = MOVEMENTS_STATE.currentType === MOVEMENTS_TYPES.IN ? quantityRounded : -quantityRounded;
-    let newQuantity = updateProductQuantity(product.id, deltaQuantity);
-    if (newQuantity === -1) {
-      setInputError(ID_MOVEMENT_QUANTITY, "Stock insuficiente para aplicar el movimiento");
+    if (!editingMovement) {
+      setInputError(ID_MOVEMENT_PRODUCT, "No se encontró el movimiento a editar");
       return;
     }
 
-    // Tercero:
+    // Al editar: siempre revertir el efecto anterior y luego aplicar el nuevo.
+    // Si solo se cambia la cantidad del mismo producto, sin revertir se sumaría de más
+    // (ej. entrada 10→20 dejaba stock +30 en vez de +20).
+    const revertDelta =
+      editingMovement.type === MOVEMENTS_TYPES.IN
+        ? -editingMovement.quantity
+        : editingMovement.quantity;
+    const applyDelta =
+      MOVEMENTS_STATE.currentType === MOVEMENTS_TYPES.IN
+        ? quantityRounded
+        : -quantityRounded;
+
+    const afterRevert = updateProductQuantity(
+      editingMovement.productId,
+      revertDelta
+    );
+    if (afterRevert === -1) {
+      setInputError(
+        ID_MOVEMENT_QUANTITY,
+        "Stock insuficiente para revertir el movimiento"
+      );
+      return;
+    }
+
+    const afterApply = updateProductQuantity(product.id, applyDelta);
+    if (afterApply === -1) {
+      // Deshacer la reversión para no dejar el stock inconsistente
+      updateProductQuantity(editingMovement.productId, -revertDelta);
+      setInputError(
+        ID_MOVEMENT_QUANTITY,
+        "Stock insuficiente para aplicar el movimiento"
+      );
+      return;
+    }
+
     // Actualizar el movimiento
-    console.log("Actualizar el movimiento que estamos editando");
     const updatedMovement = {
       ...editingMovement,
       productId: product.id,
-      type: MOVEMENTS_STATE.currentType, //.toUpperCase(),
+      type: MOVEMENTS_STATE.currentType,
       quantity: quantityRounded,
       date: date,
       note: note || "",
-    }
+    };
     setDataById(PAGE_MOVEMENTS, updatedMovement);
 
     MOVEMENTS_STATE.elementToEdit = null;
@@ -798,13 +730,12 @@ function saveMovementFromModal() {
  */
 function initProductAutocomplete() {
   // obtener los productos
-  const products = getData(PAGE_PRODUCTS);
   // obtener el input de producto
   const productInput = document.getElementById(ID_MOVEMENT_PRODUCT);
 
   // verificar que se encontraron los elementos
   if (!productInput) return;
-  if (!Array.isArray(products)) return;
+  //if (!Array.isArray(products)) return;
 
   // Quitar datalist anterior si existe (la función puede llamarse más de una vez)
   const existing = document.getElementById("productsDatalist");
@@ -815,7 +746,7 @@ function initProductAutocomplete() {
   datalist.id = "productsDatalist";
 
   // Agregar opciones para cada producto
-  products.forEach((product) => {
+  CACHE_PRODUCTS.forEach((product) => {
     const option = document.createElement("option");
     option.value = product.name;
     datalist.appendChild(option);
@@ -842,7 +773,7 @@ function openEditMovementModal(id) {
   if (!movement) return;
 
   // Obtener el producto
-  const product = getDataById(PAGE_PRODUCTS, movement.productId);
+  const product = getProductFromCache(movement.productId);
   if (!product) return;
 
   // definir el movimiento a editar
@@ -887,7 +818,7 @@ function openDeleteMovementModal(id) {
   if (!movement) return;
 
   // Obtener el producto
-  const product = getDataById(PAGE_PRODUCTS, movement.productId);
+  const product = getProductFromCache(movement.productId);
   if (!product) return;
 
   // definir el tipo de movimiento
@@ -914,26 +845,24 @@ function confirmDeleteMovement() {
   );
   if (!movement) return;
 
-  const products = getData(PAGE_PRODUCTS);
-
   // Guardar estado undo
   UNDO_STATE.data = movement;
   UNDO_STATE.type = PAGE_MOVEMENTS;
 
-  // Revertir el efecto en el stock del producto
-  const updatedProducts = products.map((p) => {
-    if (p.id === movement.productId) {
-      if (movement.type === MOVEMENTS_TYPES.IN) {
-        // Si era entrada, restar la cantidad
-        return { ...p, quantity: p.quantity - movement.quantity };
-      } else {
-        // Si era salida, sumar la cantidad
-        return { ...p, quantity: p.quantity + movement.quantity };
-      }
-    }
-    return p;
-  });
-  setData(PAGE_PRODUCTS, updatedProducts);
+  // Revertir el efecto en el stock del producto (y sincronizar caché)
+  const deltaQuantity =
+    movement.type === MOVEMENTS_TYPES.IN
+      ? -movement.quantity
+      : movement.quantity;
+  const newQuantity = updateProductQuantity(movement.productId, deltaQuantity);
+  if (newQuantity === -1) {
+    showToast(
+      "No se pudo revertir el stock del producto",
+      TOAST_COLORS.DANGER,
+      3
+    );
+    return;
+  }
 
   // Eliminar el movimiento
   const updatedMovements = movements.filter(

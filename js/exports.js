@@ -211,7 +211,7 @@ function exportAccountingToCsv(accounting) {
 
   const salesPoint = typeof getSalesPoint === "function" ? getSalesPoint() : "";
   const isoDate = accounting.date || new Date().toISOString().slice(0, 10);
-  const products = (getData(PAGE_PRODUCTS) || [])//.filter(p => p.quantity > 0);
+  const products = CACHE_PRODUCTS || [];
   const productsById = new Map(products.map((p) => [p.id, p]));
 
   const productHeaderMap = {

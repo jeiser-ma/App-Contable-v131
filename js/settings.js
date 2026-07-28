@@ -53,6 +53,7 @@ const OPERATIONAL_STATE_KEYS = [
  */
 async function onSettingsPageLoaded() {
   console.log("onSettingsPageLoaded execution");
+  loadProductsCache();
 
   // Cargar modal de confirmación si no está cargado
   loadModal(MODAL_CONFIRM_DELETE);
@@ -144,6 +145,7 @@ function resetAppDataKeepingProducts() {
   }
 
   setData(PAGE_PRODUCTS, products);
+  replaceProductsCache(products);
   location.reload();
 }
 
@@ -433,7 +435,7 @@ function isCurrencyInUse(currencyCode) {
     return true;
   }
 
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = CACHE_PRODUCTS || [];
   if (
     products.some(
       (p) => p.prices && Object.prototype.hasOwnProperty.call(p.prices, code)
@@ -691,7 +693,7 @@ function deleteUnit(index) {
   const unit = units[index];
 
   // Verificar si está en uso en productos
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = CACHE_PRODUCTS || [];
   const isInUse = products.some(p => p.um && p.um.toLowerCase() === unit.toLowerCase());
 
   if (isInUse) {
@@ -747,7 +749,7 @@ function confirmDeleteUnit() {
   const deleted = units[index];
 
   // Verificar nuevamente si está en uso
-  const products = getData(PAGE_PRODUCTS) || [];
+  const products = CACHE_PRODUCTS || [];
   const isInUse = products.some(p => p.um && p.um.toLowerCase() === deleted.toLowerCase());
 
   if (isInUse) {

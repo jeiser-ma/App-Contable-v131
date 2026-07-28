@@ -88,7 +88,10 @@ function migrateProductsToCodes() {
     const { code, ...rest } = p;
     return { ...rest, codes: [] };
   });
-  if (changed) setData(PAGE_PRODUCTS, migrated);
+  if (changed) {
+    setData(PAGE_PRODUCTS, migrated);
+    replaceProductsCache(migrated);
+  }
 }
 
 // ===============================
@@ -102,6 +105,7 @@ function migrateProductsToCodes() {
  */
 async function onProductsPageLoaded() {
   migrateProductsToCodes();
+  loadProductsCache();
 
   // Cargar modal de productos
   console.log("Loading product-modal");
@@ -136,8 +140,7 @@ function handleScanProductCode() {
   }
   openScannerModal({
     onSuccess: (decodedText) => {
-      const products = getData(PAGE_PRODUCTS) || [];
-      const found = products.find((p) => (p.codes || []).includes(decodedText));
+      const found = CACHE_PRODUCTS.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
         openEditProductModal(found.id);
       } else {
@@ -299,7 +302,7 @@ function openAddProductModal(initialCode) {
  */
 function openEditProductModal(id) {
   // Obtener el producto a editar
-  const product = getDataById(PAGE_PRODUCTS, id);
+  const product = getProductFromCache(id);
   if (!product) return;
   
   // Resetear el estado de edición porque es un nuevo producto y no hay producto para editar
@@ -619,7 +622,7 @@ function renderProductsList(products) {
  * @returns {void}
  */
 function renderProducts() {
-  const allProducts = getData(PAGE_PRODUCTS) || [];
+  const allProducts = CACHE_PRODUCTS || [];
 
   // Primero filtrar, luego ordenar
   const filtered = filterProducts(allProducts);
@@ -643,8 +646,8 @@ function saveProductFromModal() {
   const lowStockThreshold = Number(getInputValue(ID_INPUT_LOW_STOCK_THRESHOLD));
   const criticalStockThreshold = Number(getInputValue(ID_INPUT_CRITICAL_STOCK_THRESHOLD));
 
-  // Obtener los productos
-  let products = getData(PAGE_PRODUCTS);
+  // Obtener los productos (caché en memoria)
+  let products = CACHE_PRODUCTS || [];
 
   // Limpiar errores de validación anteriores del modal
   clearInputErrors([ID_INPUT_NAME, ID_INPUT_LOW_STOCK_THRESHOLD, ID_INPUT_CRITICAL_STOCK_THRESHOLD]);
@@ -689,7 +692,7 @@ function saveProductFromModal() {
   // Si hay un id de producto es una edición si no, es un alta de producto
   if (id) {
     // EDITAR
-    const productToEdit = getDataById(PAGE_PRODUCTS, id);
+    const productToEdit = getProductFromCache(id);
     if (!productToEdit) {
       setInputError(ID_PRODUCT_ID, "El producto no existe");
       return;
@@ -704,6 +707,7 @@ function saveProductFromModal() {
       criticalStockThreshold,
     };
     setDataById(PAGE_PRODUCTS, updatedProduct);
+    syncProductInCache(updatedProduct);
 
   } else {
     // ALTA
@@ -718,6 +722,7 @@ function saveProductFromModal() {
       criticalStockThreshold
     };
     setDataById(PAGE_PRODUCTS, newProduct);
+    syncProductInCache(newProduct);
   }
 
   // Cerrar el modal
@@ -779,7 +784,8 @@ function isProductLinked(prodId) {
 function updateProductQuantity(productId, quantityDelta) {
   if (!productId) return undefined; // Error: ID de producto no válido
 
-  const product = getDataById(PAGE_PRODUCTS, productId);
+  const product =
+    getProductFromCache(productId) || getDataById(PAGE_PRODUCTS, productId);
   if (!product) return undefined; // Error: producto no encontrado
 
   const currentQuantity = product.quantity ?? 0;
@@ -791,6 +797,7 @@ function updateProductQuantity(productId, quantityDelta) {
   // Actualizar la cantidad del producto
   product.quantity = newQuantity;
   setDataById(PAGE_PRODUCTS, product);
+  syncProductInCache(product);
   return newQuantity;
 }
 
@@ -800,7 +807,7 @@ function updateProductQuantity(productId, quantityDelta) {
  * @returns {void}
  */
 function openDeleteProductModal(id) {
-  const product = getData(PAGE_PRODUCTS)?.find((p) => p.id === id);
+  const product = getProductFromCache(id);
   if (!product) return;
 
   if (isProductLinked(id)) {
@@ -845,6 +852,7 @@ function confirmDeleteProduct() {
 
   const updated = products.filter((p) => p.id !== idToDel);
   setData(PAGE_PRODUCTS, updated);
+  replaceProductsCache(updated);
 
   PRODUCTS_STATE.elementToDelete = null;
   DELETE_STATE.type = null;

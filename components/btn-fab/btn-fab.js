@@ -15,13 +15,6 @@ function setupBtnFAB(btnFabId, iconClass, colorClass, callbackFn) {
     throw new Error("No se encontró el template del botón FAB");
   }
   const btnFab = template.content.firstElementChild.cloneNode(true);
-
-
-  // obtener los elementos
-  //const btnFab = document.getElementsByClassName(CLASS_CONTROL_BTN_FAB);
-  //const btnFabIcon = document.getElementsByClassName(CLASS_CONTROL_BTN_FAB_ICON);
-
-  
   
   if (btnFab) {
     // añadir el id al botón FAB
@@ -66,30 +59,4 @@ function clearBtnFABs() {
   }
 }
 
-
-/**
- * Carga un componente HTML y lo inserta en el body del documento
- * Los componentes siempre están en components/{name}/
- * @param {string} name - Nombre del control a cargar
- * @returns {Promise<void>}
- */
-async function loadBtnFAB(name, btnFabId) {
-  try {
-    const response = await fetch(`components/btn-fab/btn-fab.html`);
-    if (!response.ok) {
-      throw new Error(`No se pudo cargar el botón FAB`);
-    }
-    
-    const html = await response.text();
-    const container = document.getElementById(ID_BTN_FAB_CONTAINER);
-    if (!container) {
-      throw new Error(`No se encontró el contenedor del botón FAB`);
-    }
-    container.insertAdjacentHTML("beforeend", html);
-    console.log(`Botón FAB loaded`);
-  } catch (error) {
-    console.error(`Error cargando botón FAB:`, error);
-    throw error;
-  }
-}
 

@@ -103,8 +103,6 @@ const ACCOUNTING_STATE = {
 window.ACCOUNTING_STATE = ACCOUNTING_STATE;
 
 let currentAccounting = null;
-// Obtener los productos
-const ALL_PRODUCTS = getData(PAGE_PRODUCTS) || [];
 
 /**
  * Hook que se ejecuta cuando se carga la página de contabilidad
@@ -112,6 +110,7 @@ const ALL_PRODUCTS = getData(PAGE_PRODUCTS) || [];
  */
 async function onAccountingPageLoaded() {
   console.log("onAccountingPageLoaded execution");
+  loadProductsCache();
 
   // Cargar modales de agregar ventas
   // Cargar modal de ventas en efectivo
@@ -150,7 +149,7 @@ function exportCurrentAccountingToCsv() {
     return;
   }
 
-  const ok = exportAccountingToCsv(currentAccounting, ALL_PRODUCTS);
+  const ok = exportAccountingToCsv(currentAccounting, CACHE_PRODUCTS);
   if (ok) {
     showToast("Contabilidad exportada correctamente.", TOAST_COLORS.SUCCESS, 3);
   }
@@ -449,7 +448,7 @@ function buildAccountingProductsForDate(date) {
   console.log(">>>>>>>>>>>>>>>accounting: ", accounting);
   if (accounting && accounting.closed) return accounting.products;
 
-  const products = ALL_PRODUCTS.filter(p => p.quantity > 0);
+  const products = CACHE_PRODUCTS.filter(p => p.quantity > 0);
   const movements = getData(PAGE_MOVEMENTS) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
   const lastAccounting = getLastAccounting();
@@ -633,7 +632,7 @@ function filterAccountingProducts(accountingProducts) {
   // Filtro por texto de búsqueda (nombre del producto)
   if (ACCOUNTING_STATE.searchText) {
     filtered = filtered.filter((ap) => {
-      const product = ALL_PRODUCTS.find((p) => p.id === ap.productId);
+      const product = CACHE_PRODUCTS.find((p) => p.id === ap.productId);
       if (!product) { console.error(`Producto no encontrado: ${ap.productId}`); return false; }
       return product.name.toLowerCase().includes(ACCOUNTING_STATE.searchText.toLowerCase());
     });
@@ -663,7 +662,7 @@ async function createProductCardFromTemplate(accountingProd) {
     return;
   }
 
-  const prod = ALL_PRODUCTS.find(p => p.id === accountingProd.productId);
+  const prod = CACHE_PRODUCTS.find(p => p.id === accountingProd.productId);
   if (!prod) return;
 
   // crear una copia del template
@@ -1097,7 +1096,7 @@ function confirmCloseAccounting() {
 function updateProductsAccountingStock() {
   if (!currentAccounting?.products?.length) return;
 
-  const productsUpdated = [...ALL_PRODUCTS];
+  const productsUpdated = [...CACHE_PRODUCTS];
   currentAccounting.products.forEach((accProduct) => {
     const product = productsUpdated.find((p) => p.id === accProduct.productId);
     if (product) {
@@ -1106,6 +1105,7 @@ function updateProductsAccountingStock() {
   });
 
   setData(PAGE_PRODUCTS, productsUpdated);
+  replaceProductsCache(productsUpdated);
 }
 
 /**
