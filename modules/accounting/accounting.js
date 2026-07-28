@@ -632,7 +632,6 @@ function filterAccountingProducts(accountingProducts) {
 
   // Filtro por texto de búsqueda (nombre del producto)
   if (ACCOUNTING_STATE.searchText) {
-    //const productsAll = getData(PAGE_PRODUCTS) || [];
     filtered = filtered.filter((ap) => {
       const product = ALL_PRODUCTS.find((p) => p.id === ap.productId);
       if (!product) { console.error(`Producto no encontrado: ${ap.productId}`); return false; }
