@@ -1,0 +1,9 @@
+{
+    "PRICES_SCHEMA": "Esquema de stock y datos del producto por punto de venta. Único por storeId + productId",
+    "id": "uuid",
+    "storeId": "uuid-del-punto-de-venta",
+    "productId": "uuid-del-producto",
+    "currency": "CUP",
+    "price": 300,
+    "createdAt": "timestamp"
+  }
