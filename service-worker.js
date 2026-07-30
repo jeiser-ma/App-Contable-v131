@@ -36,6 +36,7 @@ const PRECACHE_URLS = [
   "js/auth.js",
   "js/storage.js",
   "js/cache/cache-products.js",
+  "js/current-store.js",
   "js/exports.js",
   "js/imports.js",
   "js/modal-helpers.js",

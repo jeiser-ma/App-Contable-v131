@@ -144,6 +144,9 @@ function undoDelete() {
       renderExpenses();
     } else if (UNDO_STATE.type === PAGE_STORES && typeof renderStores === "function") {
       renderStores();
+      if (typeof refreshCurrentStoreSelector === "function") {
+        refreshCurrentStoreSelector();
+      }
     }
   }
 

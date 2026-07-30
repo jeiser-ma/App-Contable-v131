@@ -183,6 +183,9 @@ function setupImportAppStateListener() {
       renderUnits();
       renderConcepts();
       loadSalaryPercentage();
+      if (typeof refreshCurrentStoreSelector === "function") {
+        refreshCurrentStoreSelector();
+      }
     } else {
       if (typeof showToast === "function") {
         showToast(result.error || "Error al importar", "danger", 4);

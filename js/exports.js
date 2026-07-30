@@ -19,6 +19,7 @@ const APP_STATE_KEYS = [
   STG_KEYS.EXPENSE_CONCEPTS,
   STG_KEYS.SALARY_PERCENTAGE,
   STG_KEYS.SALES_POINT,
+  STG_KEYS.CURRENT_STORE_ID,
 ];
 
 // ==============================================
@@ -53,7 +54,11 @@ function getAppState() {
   const state = {};
   for (const key of APP_STATE_KEYS) {
     try {
-      state[key] = getData(key);
+      if (key === STG_KEYS.CURRENT_STORE_ID && typeof getCurrentStoreId === "function") {
+        state[key] = getCurrentStoreId();
+      } else {
+        state[key] = getData(key);
+      }
     } catch (_) {
       state[key] = null;
     }

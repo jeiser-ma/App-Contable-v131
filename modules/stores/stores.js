@@ -177,6 +177,9 @@ function saveStoreFromModal() {
 
   hideModalModules();
   renderStores();
+  if (typeof refreshCurrentStoreSelector === "function") {
+    refreshCurrentStoreSelector();
+  }
 }
 
 /**
@@ -217,6 +220,9 @@ function confirmDeleteStore() {
 
   hideConfirmModal();
   renderStores();
+  if (typeof refreshCurrentStoreSelector === "function") {
+    refreshCurrentStoreSelector();
+  }
   showSnackbar("Punto de venta eliminado");
 }
 

@@ -19,6 +19,7 @@ const STG_KEYS = {
   EXPENSE_CONCEPTS: "expenseConcepts",
   SALARY_PERCENTAGE: "salaryPercentage",
   SALES_POINT: "salesPoint",
+  CURRENT_STORE_ID: "currentStoreId",
 
   // Auth (no se incluyen en APP_STATE_KEYS)
   CREDENTIALS: "credentials",

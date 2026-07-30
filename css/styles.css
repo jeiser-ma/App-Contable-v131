@@ -44,6 +44,53 @@
   transform: translateY(-2px);
 }
 
+/* Navbar superior: una sola línea fija (no tapa el contenido) */
+/*.app-top-nav {
+  min-height: 56px;
+  height: 56px;
+  padding-top: 0;
+  padding-bottom: 0;
+  flex-wrap: nowrap;
+}
+
+.app-top-nav .container-fluid {
+  height: 100%;
+}
+
+.app-top-nav-left {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#pageTitle.navbar-brand {
+  font-size: 1rem;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+/* Selector de punto de venta en navbar */
+/*.current-store-select {
+  width: 92px;
+  max-width: 92px;
+  min-width: 72px;
+  height: 32px;
+  font-size: 0.7rem;
+  padding: 0.1rem 1.5rem 0.1rem 0.35rem;
+  line-height: 1.2;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: none;
+  flex-shrink: 0;
+}
+
+@media (min-width: 576px) {
+  .current-store-select {
+    width: 140px;
+    max-width: 140px;
+    font-size: 0.75rem;
+  }
+}
+
+
 
 
 

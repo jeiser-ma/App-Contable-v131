@@ -219,5 +219,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // Iniciamos la navegación (navbar inferior, menú contextual y botón adicionar)
     console.log("Configurando navegación");
     setupNavigation();
+
+    // Selector de punto de venta (contexto global; aún sin filtrar pantallas)
+    if (typeof initCurrentStoreSelector === "function") {
+      initCurrentStoreSelector();
+    }
   }
 });

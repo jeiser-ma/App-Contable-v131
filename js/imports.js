@@ -20,6 +20,7 @@ const IMPORT_STATE_KEYS = typeof APP_STATE_KEYS !== "undefined"
       STG_KEYS.EXPENSE_CONCEPTS,
       STG_KEYS.SALARY_PERCENTAGE,
       STG_KEYS.SALES_POINT,
+      STG_KEYS.CURRENT_STORE_ID,
     ];
 
 /**
@@ -44,7 +45,12 @@ function importAppStateFromJson(jsonString) {
   for (const key of IMPORT_STATE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(parsed, key)) {
       try {
-        setData(key, parsed[key]);
+        if (key === STG_KEYS.CURRENT_STORE_ID && typeof setCurrentStoreId === "function") {
+          const id = parsed[key];
+          setCurrentStoreId(typeof id === "string" && id ? id : null);
+        } else {
+          setData(key, parsed[key]);
+        }
         imported++;
       } catch (_) {
         // Si falla una clave, seguimos con el resto

@@ -27,32 +27,39 @@
 
 <body class="bg-light">
   <!-- ===== HEADER ===== -->
-  <nav class="navbar navbar-dark bg-primary px-1 fixed-top border-bottom">
-    <div class="container-fluid d-flex justify-content-between align-items-center">
+  <nav class="navbar navbar-dark bg-primary fixed-top border-bottom px-0 mx-0">
+    <div class="container-fluid d-flex justify-content-between align-items-center flex-nowrap gap-1">
       <!-- Izquierda: icono app + título -->
-      <div class="d-flex align-items-center gap-4">
-        <img src="img/app-icon.png" alt="App Contable" title="App Contable" width="28" height="28" />
+      <div class="d-flex align-items-center gap-1 min-w-0">
+        <img src="img/app-icon.png" alt="App Contable" title="App Contable" width="28" height="28" class="flex-shrink-0" />
 
-        <!-- Icono + título del módulo -->
-        <div class="d-flex align-items-center gap-2">
-          <i id="moduleIcon" class="bi bi-house fs-5"></i>
-          <span id="pageTitle" class="navbar-brand fw-semibold mb-0">
+        <!-- Icono + título del módulo -->  
+        <div class="d-flex align-items-center text-nowrap gap-1 min-w-0">
+          <i id="moduleIcon" class="bi bi-house fs-5 flex-shrink-0"></i>
+          <span id="pageTitle" class="navbar-brand fw-semibold fs-6 text-truncate">
             Inicio
           </span>
         </div>
       </div>
 
-      <!-- Derecha: menú contextual + botón salir -->
-      <div class="d-flex align-items-center gap-2">
+      <!-- Derecha: selector PV + menú contextual + salir -->
+      <div class="d-flex align-items-center gap-1 flex-shrink-0">
+        <select
+          id="currentStoreSelect"
+          class="form-select form-select-sm rounded-pill"
+          aria-label="Punto de venta actual"
+          title="Punto de venta actual"
+        ></select>
+
         <!-- Botón salir -->
         <button id="btnLogout"
-          class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center"
+          class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center flex-shrink-0"
           style="width: 36px; height: 36px" title="Salir">
           <i class="bi bi-box-arrow-right"></i>
         </button>
 
         <!-- Menú contextual -->
-        <div class="dropdown">
+        <div class="dropdown flex-shrink-0">
           <button class="btn btn-sm rounded-circle btn-light d-flex align-items-center justify-content-center"
             style="width: 36px; height: 36px" type="button" id="btnContextMenu" data-bs-toggle="dropdown"
             aria-expanded="false" title="Menú">
@@ -239,6 +246,7 @@
   <script src="js/storage.js"></script>
   <script src="js/cache/cache-products.js"></script>
   <script src="js/configs.js"></script>
+  <script src="js/current-store.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/exports.js"></script>
   <script src="js/imports.js"></script>
