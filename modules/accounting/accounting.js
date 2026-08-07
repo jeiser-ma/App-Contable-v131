@@ -133,7 +133,10 @@ async function onAccountingPageLoaded() {
   document.getElementById(ID_BTN_ADD_TRANSFER_SALES).onclick = () => openTransferSalesModal();
   document.getElementById(ID_BTN_CLOSE_ACCOUNTING).onclick = () => confirmCloseAccounting();
   document.getElementById(ID_BTN_REOPEN_ACCOUNTING).onclick = () => confirmReopenAccounting();
-  document.getElementById(ID_BTN_EXPORT_ACCOUNTING).onclick = () => exportCurrentAccountingToCsv();
+  document.getElementById(ID_BTN_EXPORT_ACCOUNTING).onclick = () =>
+    exportCurrentAccountingToCsv().catch((err) =>
+      console.error("[accounting] exportCurrentAccountingToCsv", err)
+    );
 
   // Renderizar la contabilidad
   await renderAccounting();
@@ -143,13 +146,13 @@ async function onAccountingPageLoaded() {
  * Exporta la contabilidad del día visible a CSV
  * @returns {void}
  */
-function exportCurrentAccountingToCsv() {
+async function exportCurrentAccountingToCsv() {
   if (!currentAccounting) {
     showToast("No hay contabilidad cargada para exportar.", TOAST_COLORS.DANGER, 3);
     return;
   }
 
-  const ok = exportAccountingToCsv(currentAccounting, CACHE.products);
+  const ok = await exportAccountingToCsv(currentAccounting, CACHE.products);
   if (ok) {
     showToast("Contabilidad exportada correctamente.", TOAST_COLORS.SUCCESS, 3);
   }
@@ -313,20 +316,16 @@ function isAccountingClosed(acc) {
  * @returns {void}
  */
 async function loadAccounting() {
-  const allAccounting = getData(PAGE_ACCOUNTING) || [];
-
-  currentAccounting = Array.isArray(allAccounting)
-    ? allAccounting.find((a) => a.date === ACCOUNTING_STATE.filterDate)
-    : null;
+  currentAccounting = await getAccountingByDate(ACCOUNTING_STATE.filterDate);
 
   if (!currentAccounting) {
     // Crear nueva contabilidad para el día
     await createNewAccounting(ACCOUNTING_STATE.filterDate);
-    saveAccounting();
+    await persistCurrentAccounting();
   } else if (!isAccountingClosed(currentAccounting)) {
     // Solo abiertas se recalculan. Cerradas: snapshot tal cual (import / días viejos).
     await refreshOpenAccountingData();
-    saveAccounting();
+    await persistCurrentAccounting();
   }
   // Cerrada: no tocar products ni expenses
 }
@@ -373,11 +372,11 @@ async function calculateRealSalary() {
  */
 async function createNewAccounting(date) {
   // Construir la lista de productos de la contabilidad
-  const accountingProducts = buildAccountingProductsForDate(date);
+  const accountingProducts = await buildAccountingProductsForDate(date);
   // Calcular el importe total de los productos
   const totalAmount = roundTo2(accountingProducts.reduce((sum, p) => sum + p.amount, 0));
   // Construir la lista de gastos de la contabilidad
-  const accountingExpenses = buildAccountingExpensesForDate(date);
+  const accountingExpenses = await buildAccountingExpensesForDate(date);
   // Calcular el total de gastos
   const totalExpenses = roundTo2(accountingExpenses.reduce((sum, e) => sum + (e.amount || 0), 0));
 
@@ -424,8 +423,8 @@ async function createNewAccounting(date) {
 async function refreshOpenAccountingData() {
   if (!currentAccounting || isAccountingClosed(currentAccounting)) return;
 
-  currentAccounting.products = buildAccountingProductsForDate(currentAccounting.date);
-  currentAccounting.expenses = buildAccountingExpensesForDate(currentAccounting.date);
+  currentAccounting.products = await buildAccountingProductsForDate(currentAccounting.date);
+  currentAccounting.expenses = await buildAccountingExpensesForDate(currentAccounting.date);
 
   //Actualizar total de gastos
   currentAccounting.totalExpenses = roundTo2(currentAccounting.expenses.reduce((sum, e) => sum + (e.amount || 0), 0));
@@ -462,9 +461,11 @@ async function refreshOpenAccountingData() {
  * @param {string} date - Fecha en formato YYYY-MM-DD
  * @returns {Array} Lista de productos de contabilidad
  */
-function buildAccountingProductsForDate(date) {
+async function buildAccountingProductsForDate(date) {
   const yesterday = getYesterday(date);
-  const allAccounting = getData(PAGE_ACCOUNTING) || [];
+  const allAccounting = isCacheLoaded(STG_KEYS.ACCOUNTING)
+    ? (CACHE.accounting || [])
+    : await getAllAccounting();
   const accounting =
     (Array.isArray(allAccounting)
       ? allAccounting.find((a) => a.date === date)
@@ -481,9 +482,13 @@ function buildAccountingProductsForDate(date) {
   }
 
   const products = CACHE.products || [];
-  const movements = getData(PAGE_MOVEMENTS) || [];
-  const inventory = getData(PAGE_INVENTORY) || [];
-  const lastAccounting = getLastAccounting(date);
+  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+    ? (CACHE.movements || [])
+    : await getAllMovements();
+  const inventory = isCacheLoaded(STG_KEYS.INVENTORY)
+    ? (CACHE.inventory || [])
+    : await getAllInventory();
+  const lastAccounting = await getLastAccounting(date);
 
   // Productos ya en contabilidad abierta de este día (import / estado previo)
   const existingSnapshot = Array.isArray(accounting?.products)
@@ -596,8 +601,10 @@ function buildAccountingProductsForDate(date) {
  * @param {string} [beforeDate] - YYYY-MM-DD; solo se consideran cierres con date < beforeDate
  * @returns {Object|null} Contabilidad cerrada o null
  */
-function getLastAccounting(beforeDate) {
-  const allAccounting = getData(PAGE_ACCOUNTING) || [];
+async function getLastAccounting(beforeDate) {
+  const allAccounting = isCacheLoaded(STG_KEYS.ACCOUNTING)
+    ? (CACHE.accounting || [])
+    : await getAllAccounting();
 
   let closedAccountings = allAccounting.filter((a) => a.closed === true);
 
@@ -629,9 +636,11 @@ function getLastAccounting(beforeDate) {
  * @param {string} date - Fecha en formato YYYY-MM-DD
  * @returns {Array} Lista de gastos (snapshot)
  */
-function buildAccountingExpensesForDate(date) {
+async function buildAccountingExpensesForDate(date) {
   const yesterday = getYesterday(date);
-  const expenses = getData(PAGE_EXPENSES) || [];
+  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+    ? (CACHE.expenses || [])
+    : await getAllExpenses();
 
   let expensesForDate = expenses.filter(e => e.date === yesterday).map(e => ({ ...e }));
   return expensesForDate;
@@ -1082,7 +1091,9 @@ function openTransferSalesModal() {
  * @returns {void}
  */
 function saveCashSales() {
-  saveSalesGeneric(ID_INPUT_CASH_SALES);
+  saveSalesGeneric(ID_INPUT_CASH_SALES).catch((err) =>
+    console.error("[accounting] saveCashSales", err)
+  );
 }
 
 /**
@@ -1090,7 +1101,9 @@ function saveCashSales() {
  * @returns {void}
  */
 function saveTransferSales() {
-  saveSalesGeneric(ID_INPUT_TRANSFER_SALES);
+  saveSalesGeneric(ID_INPUT_TRANSFER_SALES).catch((err) =>
+    console.error("[accounting] saveTransferSales", err)
+  );
 }
 
 /**
@@ -1098,7 +1111,7 @@ function saveTransferSales() {
  * @param {string} inputId - ID del campo de entrada
  * @returns {void}
  */
-function saveSalesGeneric(inputId) {
+async function saveSalesGeneric(inputId) {
   if (!currentAccounting) return;
 
   // Obtener el valor del input
@@ -1128,21 +1141,21 @@ function saveSalesGeneric(inputId) {
   currentAccounting.totalSales = roundTo2(currentAccounting.cashSales + currentAccounting.transferSales + currentAccounting.totalExpenses);
 
   // Guardar la contabilidad
-  saveAccounting();
+  await persistCurrentAccounting();
   // Cerrar el modal
   hideModalModules();
   // Renderizar la contabilidad
-  renderAccounting();
+  await renderAccounting();
 }
 
 /**
- * Guarda la contabilidad actual
- * @returns {void}
+ * Persiste la contabilidad actual vía repositorio
+ * @returns {Promise<void>}
  */
-function saveAccounting() {
+async function persistCurrentAccounting() {
   if (!currentAccounting) return;
 
-  setDataById(PAGE_ACCOUNTING, currentAccounting);
+  await saveAccounting(currentAccounting);
 }
 
 /**
@@ -1157,7 +1170,10 @@ function confirmReopenAccounting() {
     message: "¿Estás seguro de reabrir la contabilidad? Podrás volver a editar inventarios y datos de este día.",
     confirmText: "Reabrir",
     confirmButtonClass: "btn-primary",
-    callbackFn: reopenAccounting,
+    callbackFn: () =>
+      reopenAccounting().catch((err) =>
+        console.error("[accounting] reopenAccounting", err)
+      ),
   });
 }
 
@@ -1169,17 +1185,17 @@ function confirmReopenAccounting() {
  *    no por quantity del catálogo)
  * @returns {void}
  */
-function reopenAccounting() {
+async function reopenAccounting() {
   if (!currentAccounting) return;
   currentAccounting.closed = false;
   currentAccounting.closedAt = null;
 
   // Antes del refresh: liberar inventarios del día (si no, quedan CLOSED y no se editan)
-  changeInventoryAccountingStatus("CONFIRMED");
+  await changeInventoryAccountingStatus("CONFIRMED");
 
-  saveAccounting();
+  await persistCurrentAccounting();
   // loadAccounting → refreshOpenAccountingData recalcula products y vuelve a guardar
-  renderAccounting();
+  await renderAccounting();
   showToast("Contabilidad reabierta correctamente", TOAST_COLORS.SUCCESS, 3);
 }
 
@@ -1212,7 +1228,10 @@ function confirmCloseAccounting() {
     message: "¿Estás seguro de cerrar la contabilidad? Se actualizará el stock de productos y no podrás editar los inventarios de esta fecha.",
     confirmText: "Cerrar contabilidad",
     confirmButtonClass: "btn-primary",
-    callbackFn: closeAccounting,
+    callbackFn: () =>
+      closeAccounting().catch((err) =>
+        console.error("[accounting] closeAccounting", err)
+      ),
   });
 }
 
@@ -1221,7 +1240,7 @@ function confirmCloseAccounting() {
  * de la contabilidad que se está cerrando.
  * @returns {void}
  */
-function updateProductsAccountingStock() {
+async function updateProductsAccountingStock() {
   if (!currentAccounting?.products?.length) return;
 
   const productsUpdated = [...CACHE.products];
@@ -1232,7 +1251,7 @@ function updateProductsAccountingStock() {
     }
   });
 
-  setData(PAGE_PRODUCTS, productsUpdated);
+  await saveAllProducts(productsUpdated);
   replaceProductsCache(productsUpdated);
 }
 
@@ -1248,14 +1267,18 @@ function updateProductsAccountingStock() {
  * @param {string} newStatus - "CLOSED" al cerrar, "CONFIRMED" al reabrir
  * @returns {void}
  */
-function changeInventoryAccountingStatus(newStatus) {
+async function changeInventoryAccountingStatus(newStatus) {
   if (!currentAccounting) return;
   if (newStatus !== "CONFIRMED" && newStatus !== "CLOSED") return;
 
   const productIds = new Set(
     (currentAccounting.products || []).map((p) => p.productId)
   );
-  const inventory = getData(PAGE_INVENTORY) || [];
+  const inventory = (
+    isCacheLoaded(STG_KEYS.INVENTORY)
+      ? (CACHE.inventory || [])
+      : await getAllInventory()
+  ).slice();
   const isClosing = newStatus === "CLOSED";
 
   inventory.forEach((inv) => {
@@ -1275,24 +1298,24 @@ function changeInventoryAccountingStatus(newStatus) {
     }
   });
 
-  setData(PAGE_INVENTORY, inventory);
+  await saveAllInventory(inventory);
 }
 
 /**
  * Cierra la contabilidad
  * @returns {void}
  */
-function closeAccounting() {
+async function closeAccounting() {
   if (!currentAccounting) return;
 
   currentAccounting.closed = true;
   currentAccounting.closedAt = new Date().toISOString();
 
-  updateProductsAccountingStock();
-  changeInventoryAccountingStatus("CLOSED");
+  await updateProductsAccountingStock();
+  await changeInventoryAccountingStatus("CLOSED");
 
-  saveAccounting();
-  renderAccounting();
+  await persistCurrentAccounting();
+  await renderAccounting();
   showToast("Contabilidad cerrada correctamente", TOAST_COLORS.SUCCESS, 3);
 }
 

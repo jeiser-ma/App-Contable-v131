@@ -158,7 +158,14 @@ function loadCache(key, options) {
   }
 
   const stgKey = CACHE_STORAGE_KEYS[key];
-  const raw = typeof getData === "function" ? getData(stgKey) : null;
+  // Mismo formato que LocalStorageProvider (JSON). No usar getData (default []).
+  let raw = null;
+  try {
+    const item = localStorage.getItem(stgKey);
+    if (item != null && item !== "") raw = JSON.parse(item);
+  } catch (_) {
+    raw = null;
+  }
   CACHE[key] = normalizeCacheList(raw);
   CACHE_STATUS[key] = true;
   return CACHE[key];

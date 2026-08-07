@@ -6,13 +6,14 @@ const ID_SNACKBAR_CLOSE = "snackbarClose";
 
 //#endregion
 
-// Estado de la pantalla de productos (unificado)
+// Estado de deshacer eliminaciones (HU13: todas las ramas vía repos)
 const UNDO_STATE = {
   data: null,
   type: null,
   index: null, // Para unidades y conceptos (guardar posición original)
   buttonListener: null,
-  timer: null
+  timer: null,
+  restoring: false,
 };
 
 /**
@@ -30,10 +31,18 @@ function showSnackbar(text) {
 
   document.getElementById(ID_SNACKBAR_TEXT).textContent = text;
   bar.classList.remove("d-none");
+  UNDO_STATE.restoring = false;
 
   // Agregar event listener solo cuando el snackbar está visible
   if (!UNDO_STATE.buttonListener) {
-    UNDO_STATE.buttonListener = () => undoDelete();
+    UNDO_STATE.buttonListener = () => {
+      undoDelete().catch((err) => {
+        console.error("[undo] undoDelete", err);
+        if (typeof showToast === "function") {
+          showToast("No se pudo deshacer la eliminación", TOAST_COLORS.DANGER, 3);
+        }
+      });
+    };
     btnUndo.addEventListener("click", UNDO_STATE.buttonListener);
   }
 
@@ -52,6 +61,7 @@ function clearUndoState() {
   UNDO_STATE.data = null;
   UNDO_STATE.type = null;
   UNDO_STATE.index = null;
+  UNDO_STATE.restoring = false;
 }
 
 /**
@@ -76,94 +86,101 @@ function hideSnackbar() {
 /**
  * Deshace la eliminación de un elemento
  * Restaura el elemento eliminado según su tipo
- * @returns {void}
+ * @returns {Promise<void>}
  */
 async function undoDelete() {
-  if (!UNDO_STATE.data || !UNDO_STATE.type) return;
+  if (!UNDO_STATE.data || !UNDO_STATE.type || UNDO_STATE.restoring) return;
 
-  // Manejar unidades de medida y conceptos de gastos (tienen índice)
-  if (UNDO_STATE.type === STG_KEYS.UNITS || UNDO_STATE.type === STG_KEYS.EXPENSE_CONCEPTS || UNDO_STATE.type === STG_KEYS.CURRENCIES) {
-    const data = getData(UNDO_STATE.type);
-    const index = UNDO_STATE.index !== undefined ? UNDO_STATE.index : data.length;
+  // Snapshot y cierre UI al inicio: evita doble clic durante awaits
+  const payload = UNDO_STATE.data;
+  const type = UNDO_STATE.type;
+  const index = UNDO_STATE.index;
+  UNDO_STATE.restoring = true;
+  clearTimeout(UNDO_STATE.timer);
+  hideSnackbar();
 
-    // Insertar en la posición original
-    data.splice(index, 0, UNDO_STATE.data);
-    setData(UNDO_STATE.type, data);
-
-    // Renderizar
-    if (UNDO_STATE.type === STG_KEYS.UNITS && typeof renderUnits === "function") {
-      renderUnits();
-    } else if (UNDO_STATE.type === STG_KEYS.EXPENSE_CONCEPTS && typeof renderConcepts === "function") {
-      renderConcepts();
-    } else if (UNDO_STATE.type === STG_KEYS.CURRENCIES && typeof renderCurrencies === "function") {
-      renderCurrencies();
-    }
-  } else if (
-    (UNDO_STATE.type === "finance-inputs" || UNDO_STATE.type === "finance-outputs") &&
-    typeof undoFinanceFlowDelete === "function"
-  ) {
-    undoFinanceFlowDelete(UNDO_STATE.type, UNDO_STATE.data, UNDO_STATE.index);
-  } else if (UNDO_STATE.type === PAGE_MOVEMENTS) {
-    // Restaurar movimiento y reaplicar efecto en stock
-    const movement = UNDO_STATE.data;
-    const data = getData(PAGE_MOVEMENTS) || [];
-    data.push(movement);
-    setData(PAGE_MOVEMENTS, data);
-
-    if (movement && typeof updateProductQuantity === "function") {
-      const delta =
-        movement.type === MOVEMENTS_TYPES.IN
-          ? Number(movement.quantity) || 0
-          : -(Number(movement.quantity) || 0);
-      updateProductQuantity(movement.productId, delta);
-    }
-
-    if (typeof renderMovements === "function") {
-      renderMovements();
-    }
-  } else if (UNDO_STATE.type === PAGE_PRODUCTS) {
-    const data = getData(UNDO_STATE.type) || [];
-    data.push(UNDO_STATE.data);
-    setData(UNDO_STATE.type, data);
-    if (typeof syncProductInCache === "function" && UNDO_STATE.data) {
-      syncProductInCache(UNDO_STATE.data);
-    }
-    if (typeof renderProducts === "function") {
-      renderProducts();
-    }
-  } else if (UNDO_STATE.type === PAGE_STORES) {
-    //const storesAll = getAllStores(UNDO_STATE.type);
-    await saveStore(UNDO_STATE.data);
-    if (typeof renderStores === "function") {
-      renderStores();
-      if (typeof refreshCurrentStoreSelector === "function") {
-        refreshCurrentStoreSelector();
+  try {
+    // Unidades, conceptos y monedas (repos settings; conservan índice)
+    if (
+      type === STG_KEYS.UNITS ||
+      type === STG_KEYS.EXPENSE_CONCEPTS ||
+      type === STG_KEYS.CURRENCIES
+    ) {
+      let data;
+      if (type === STG_KEYS.UNITS) {
+        data = await getUnits();
+      } else if (type === STG_KEYS.CURRENCIES) {
+        data = await getCurrencies();
+      } else {
+        data = await getExpenseConcepts();
       }
-    }
+      if (!Array.isArray(data)) data = [];
+      const insertAt =
+        index !== undefined && index !== null ? index : data.length;
+      data.splice(insertAt, 0, payload);
 
-  }
-  else {
-    // Manejar otros tipos (inventario, gastos, stores, etc.)
-    const data = getData(UNDO_STATE.type);
-    //console.log(data);
-    data.push(UNDO_STATE.data);
-    setData(UNDO_STATE.type, data);
-
-    // Renderizar según el tipo
-    if (UNDO_STATE.type === PAGE_INVENTORY && typeof renderInventory === "function") {
-      renderInventory();
-    } else if (UNDO_STATE.type === PAGE_EXPENSES && typeof renderExpenses === "function") {
-      renderExpenses();
-    } /*else if (UNDO_STATE.type === PAGE_STORES && typeof renderStores === "function") {
-      renderStores();
-      if (typeof refreshCurrentStoreSelector === "function") {
-        refreshCurrentStoreSelector();
+      if (type === STG_KEYS.UNITS) {
+        await saveUnits(data);
+        if (typeof renderUnits === "function") await renderUnits();
+      } else if (type === STG_KEYS.CURRENCIES) {
+        await saveCurrencies(data);
+        if (typeof renderCurrencies === "function") await renderCurrencies();
+      } else {
+        await saveExpenseConcepts(data);
+        if (typeof renderConcepts === "function") await renderConcepts();
       }
-    }*/
-  }
+    } else if (
+      (type === "finance-inputs" || type === "finance-outputs") &&
+      typeof undoFinanceFlowDelete === "function"
+    ) {
+      await undoFinanceFlowDelete(type, payload, index);
+    } else if (type === PAGE_MOVEMENTS || type === STG_KEYS.MOVEMENTS) {
+      const movement = payload;
+      await saveMovement(movement);
 
-  hideSnackbar(); // Esta función ya remueve el listener
-  clearUndoState();
+      if (movement && typeof updateProductQuantity === "function") {
+        const delta =
+          movement.type === MOVEMENTS_TYPES.IN
+            ? Number(movement.quantity) || 0
+            : -(Number(movement.quantity) || 0);
+        await updateProductQuantity(movement.productId, delta);
+      }
+
+      if (typeof renderMovements === "function") {
+        await renderMovements();
+      }
+    } else if (type === PAGE_PRODUCTS || type === STG_KEYS.PRODUCTS) {
+      await saveProduct(payload);
+      if (typeof syncProductInCache === "function" && payload) {
+        syncProductInCache(payload);
+      }
+      if (typeof renderProducts === "function") {
+        await renderProducts();
+      }
+    } else if (type === PAGE_STORES || type === STG_KEYS.STORES) {
+      await saveStore(payload);
+      if (typeof renderStores === "function") {
+        await renderStores();
+      }
+      if (typeof refreshCurrentStoreSelector === "function") {
+        await refreshCurrentStoreSelector();
+      }
+    } else if (type === PAGE_INVENTORY || type === STG_KEYS.INVENTORY) {
+      await saveInventoryCount(payload);
+      if (typeof renderInventory === "function") {
+        await renderInventory();
+      }
+    } else if (type === PAGE_EXPENSES || type === STG_KEYS.EXPENSES) {
+      await saveExpense(payload);
+      if (typeof renderExpenses === "function") {
+        await renderExpenses();
+      }
+    } else {
+      console.warn("[undo] tipo no soportado:", type);
+    }
+  } finally {
+    clearUndoState();
+  }
 }
 
 

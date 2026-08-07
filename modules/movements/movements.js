@@ -83,11 +83,15 @@ async function onMovementsPageLoaded() {
   // Configurar botón de confirmar del modal
   const btnConfirm = document.getElementById(BTN_ID_CONFIRM_MOVEMENT);
   if (btnConfirm) {
-    btnConfirm.onclick = saveMovementFromModal;
+    btnConfirm.onclick = () => {
+      saveMovementFromModal().catch((err) =>
+        console.error("[movements] saveMovementFromModal", err)
+      );
+    };
   }
 
   // Renderizar la lista de movimientos
-  renderMovements();
+  await renderMovements();
 }
 
 
@@ -487,10 +491,16 @@ function renderMovementsList(movements) {
     meta.innerHTML = `<i class="bi bi-calendar"></i> ${formattedDate} • <i class="bi bi-boxes"></i> ${formatTo2(m.quantity)} `;
 
     // Configurar botones de acción
-    node.querySelector(".btn-edit-movement").onclick = () =>
-      openEditMovementModal(m.id);
-    node.querySelector(".btn-delete-movement").onclick = () =>
-      openDeleteMovementModal(m.id);
+    node.querySelector(".btn-edit-movement").onclick = () => {
+      openEditMovementModal(m.id).catch((err) =>
+        console.error("[movements] openEditMovementModal", err)
+      );
+    };
+    node.querySelector(".btn-delete-movement").onclick = () => {
+      openDeleteMovementModal(m.id).catch((err) =>
+        console.error("[movements] openDeleteMovementModal", err)
+      );
+    };
 
     movementsList.appendChild(node);
   });
@@ -499,10 +509,10 @@ function renderMovementsList(movements) {
 /**
  * Función principal que renderiza los movimientos
  * Filtra, ordena y renderiza usando MOVEMENTS_STATE
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderMovements() {
-  const allMovements = getData(PAGE_MOVEMENTS) || [];
+async function renderMovements() {
+  const allMovements = await getAllMovements();
 
   // Primero filtrar, luego ordenar
   const filtered = filterMovements(allMovements);
@@ -522,9 +532,9 @@ function renderMovements() {
 /**
  * Guarda el movimiento desde el modal
  * Valida los campos, actualiza el stock del producto y guarda el movimiento
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveMovementFromModal() {
+async function saveMovementFromModal() {
 
 
   const productInput = document.getElementById(ID_MOVEMENT_PRODUCT);
@@ -571,7 +581,9 @@ function saveMovementFromModal() {
   }
 
   // Obtener el movimiento a editar si existe
-  const editingMovement = MOVEMENTS_STATE.elementToEdit ? getDataById(PAGE_MOVEMENTS, MOVEMENTS_STATE.elementToEdit) : null;
+  const editingMovement = MOVEMENTS_STATE.elementToEdit
+    ? await getMovementById(MOVEMENTS_STATE.elementToEdit)
+    : null;
 
   // Validar stock para salidas (solo si es nuevo movimiento o si cambió la cantidad/producto)
   if (MOVEMENTS_STATE.currentType === MOVEMENTS_TYPES.OUT) {
@@ -619,7 +631,7 @@ function saveMovementFromModal() {
 
   if (MOVEMENTS_STATE.elementToEdit) {
     // EDITAR: Actualizar movimiento existente
-    if (!editingMovement) {
+    if (!editingMovement?.id) {
       setInputError(ID_MOVEMENT_PRODUCT, "No se encontró el movimiento a editar");
       return;
     }
@@ -636,7 +648,7 @@ function saveMovementFromModal() {
         ? quantityRounded
         : -quantityRounded;
 
-    const afterRevert = updateProductQuantity(
+    const afterRevert = await updateProductQuantity(
       editingMovement.productId,
       revertDelta
     );
@@ -648,10 +660,10 @@ function saveMovementFromModal() {
       return;
     }
 
-    const afterApply = updateProductQuantity(product.id, applyDelta);
+    const afterApply = await updateProductQuantity(product.id, applyDelta);
     if (afterApply === -1) {
       // Deshacer la reversión para no dejar el stock inconsistente
-      updateProductQuantity(editingMovement.productId, -revertDelta);
+      await updateProductQuantity(editingMovement.productId, -revertDelta);
       setInputError(
         ID_MOVEMENT_QUANTITY,
         "Stock insuficiente para aplicar el movimiento"
@@ -668,7 +680,7 @@ function saveMovementFromModal() {
       date: date,
       note: note || "",
     };
-    setDataById(PAGE_MOVEMENTS, updatedMovement);
+    await saveMovement(updatedMovement);
 
     MOVEMENTS_STATE.elementToEdit = null;
   } else {
@@ -676,7 +688,7 @@ function saveMovementFromModal() {
 
     //1. Actualizar stock del producto para ver si hay suficiente stock
     let deltaQuantity = MOVEMENTS_STATE.currentType === MOVEMENTS_TYPES.IN ? quantityRounded : -quantityRounded;
-    let newQuantity = updateProductQuantity(product.id, deltaQuantity);
+    let newQuantity = await updateProductQuantity(product.id, deltaQuantity);
     if (newQuantity === -1) {
       // Si el stock es insuficiente, mostrar error y no crear el movimiento
       setInputError(ID_MOVEMENT_QUANTITY, "Stock insuficiente para aplicar el movimiento");
@@ -685,19 +697,15 @@ function saveMovementFromModal() {
 
     //2. Crear nuevo movimiento
     console.log("Crear nuevo movimiento");
-    const newMovement = {
-      id: crypto.randomUUID(),
-      productId: product.id,
-      type: MOVEMENTS_STATE.currentType, //.toUpperCase(),
-      quantity: quantityRounded,
-      date: date,
-      note: note || "",
-      createdAt: new Date().toISOString(),
-    };
-
-    // movements.push(newMovement);
-    // setData(PAGE_MOVEMENTS, movements);
-     setDataById(PAGE_MOVEMENTS, newMovement);
+    await saveMovement(
+      createMovement({
+        productId: product.id,
+        type: MOVEMENTS_STATE.currentType, //.toUpperCase(),
+        quantity: quantityRounded,
+        date: date,
+        note: note || "",
+      })
+    );
 
     // // Actualizar stock del producto
     // const updatedProducts = products.map((p) => {
@@ -719,7 +727,7 @@ function saveMovementFromModal() {
   // Cerrar modal y actualizar vista
   hideModalModules();
   MOVEMENTS_STATE.currentType = null;
-  renderMovements();
+  await renderMovements();
 }
 
 /**
@@ -765,12 +773,12 @@ function initProductAutocomplete() {
 /**
  * Abre el modal para editar un movimiento existente
  * @param {string} id - ID del movimiento a editar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openEditMovementModal(id) {
+async function openEditMovementModal(id) {
   // Obtener el movimiento
-  const movement = getDataById(PAGE_MOVEMENTS, id);
-  if (!movement) return;
+  const movement = await getMovementById(id);
+  if (!movement?.id) return;
 
   // Obtener el producto
   const product = getProductFromCache(movement.productId);
@@ -807,15 +815,15 @@ function openEditMovementModal(id) {
 /**
  * Abre el modal para eliminar un movimiento
  * @param {string} id - ID del movimiento a eliminar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openDeleteMovementModal(id) {
+async function openDeleteMovementModal(id) {
   // definir el movimiento a eliminar
   MOVEMENTS_STATE.elementToDelete = id;
 
   // Obtener el movimiento
-  const movement = getDataById(PAGE_MOVEMENTS, id);
-  if (!movement) return;
+  const movement = await getMovementById(id);
+  if (!movement?.id) return;
 
   // Obtener el producto
   const product = getProductFromCache(movement.productId);
@@ -834,16 +842,13 @@ function openDeleteMovementModal(id) {
 /**
  * Confirma la eliminación de un movimiento
  * Elimina el movimiento y revierte el efecto en el stock del producto
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteMovement() {
+async function confirmDeleteMovement() {
   if (!MOVEMENTS_STATE.elementToDelete) return;
 
-  const movements = getData(PAGE_MOVEMENTS) || [];
-  const movement = movements.find(
-    (m) => m.id === MOVEMENTS_STATE.elementToDelete
-  );
-  if (!movement) return;
+  const movement = await getMovementById(MOVEMENTS_STATE.elementToDelete);
+  if (!movement?.id) return;
 
   // Guardar estado undo
   UNDO_STATE.data = movement;
@@ -854,7 +859,7 @@ function confirmDeleteMovement() {
     movement.type === MOVEMENTS_TYPES.IN
       ? -movement.quantity
       : movement.quantity;
-  const newQuantity = updateProductQuantity(movement.productId, deltaQuantity);
+  const newQuantity = await updateProductQuantity(movement.productId, deltaQuantity);
   if (newQuantity === -1) {
     showToast(
       "No se pudo revertir el stock del producto",
@@ -865,16 +870,13 @@ function confirmDeleteMovement() {
   }
 
   // Eliminar el movimiento
-  const updatedMovements = movements.filter(
-    (m) => m.id !== MOVEMENTS_STATE.elementToDelete
-  );
-  setData(PAGE_MOVEMENTS, updatedMovements);
+  await deleteMovement(MOVEMENTS_STATE.elementToDelete);
 
   MOVEMENTS_STATE.elementToDelete = null;
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderMovements();
+  await renderMovements();
   showSnackbar("Movimiento eliminado");
 }

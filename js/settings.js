@@ -1,6 +1,7 @@
 // ===============================
 // Settings - App Contable
 // Gestión de unidades de medida y conceptos de gastos
+// units / currencies / concepts → settings.repository (HU13)
 // ===============================
 
 //#region Constants
@@ -61,11 +62,11 @@ async function onSettingsPageLoaded() {
   // Asegurar que el componente badge esté cargado antes de renderizar chips
   if (!document.getElementById(ID_BADGE_TEMPLATE)) await loadComponent("badge");
 
-  // Renderizar unidades, monedas y conceptos
-  ensureCurrenciesDefaults();
-  renderUnits();
-  renderCurrencies();
-  renderConcepts();
+  // Renderizar unidades, monedas y conceptos (repos)
+  await ensureCurrenciesDefaults();
+  await renderUnits();
+  await renderCurrencies();
+  await renderConcepts();
 
   // Configurar event listeners
   setupUnitsListeners();
@@ -75,8 +76,8 @@ async function onSettingsPageLoaded() {
   setupSalesPointListener();
 
   // Cargar porcentaje de salario actual
-  loadSalaryPercentage();
-  loadSalesPoint();
+  await loadSalaryPercentage();
+  await loadSalesPoint();
 
   // Configurar la versión y la fecha de última actualización de la app
   setupAppVersion();
@@ -118,7 +119,10 @@ function setupDeleteAppDataListeners() {
           "Los productos se conservan con stock en 0. Unidades, conceptos y % de salario no se modifican. ¿Continuar?",
         confirmText: "Resetear",
         confirmButtonClass: "btn-warning",
-        callbackFn: resetAppDataKeepingProducts,
+        callbackFn: () =>
+          resetAppDataKeepingProducts().catch((err) =>
+            console.error("[settings] resetAppDataKeepingProducts", err)
+          ),
       });
   }
 }
@@ -134,17 +138,23 @@ function deleteAppDataFull() {
 /**
  * Reset operativo: productos con stock 0; borra movimientos, inventario, gastos y contabilidad
  */
-function resetAppDataKeepingProducts() {
-  const products = (getData(PAGE_PRODUCTS) || []).map((p) => ({
+async function resetAppDataKeepingProducts() {
+  const source = isCacheLoaded(STG_KEYS.PRODUCTS)
+    ? (CACHE.products || [])
+    : await getAllProducts();
+  const products = source.map((p) => ({
     ...p,
     quantity: 0,
   }));
 
   for (const key of OPERATIONAL_STATE_KEYS) {
     localStorage.removeItem(key);
+    if (typeof invalidateCache === "function") {
+      invalidateCache(key);
+    }
   }
 
-  setData(PAGE_PRODUCTS, products);
+  await saveAllProducts(products);
   replaceProductsCache(products);
   location.reload();
 }
@@ -155,7 +165,10 @@ function resetAppDataKeepingProducts() {
 function setupExportAppStateListener() {
   const btn = document.getElementById(ID_BTN_EXPORT_APP_STATE);
   if (!btn) return;
-  btn.onclick = () => exportAppStateToJson();
+  btn.onclick = () =>
+    exportAppStateToJson().catch((err) =>
+      console.error("[settings] exportAppStateToJson", err)
+    );
 }
 
 /**
@@ -180,11 +193,15 @@ function setupImportAppStateListener() {
       } else {
         alert(`Estado importado correctamente (${result.imported} datos actualizados).`);
       }
-      renderUnits();
-      renderConcepts();
-      loadSalaryPercentage();
+      await ensureCurrenciesDefaults();
+      await renderUnits();
+      await renderCurrencies();
+      await renderConcepts();
+      loadSalaryPercentage().catch((err) =>
+        console.error("[settings] loadSalaryPercentage", err)
+      );
       if (typeof refreshCurrentStoreSelector === "function") {
-        refreshCurrentStoreSelector();
+        await refreshCurrentStoreSelector();
       }
     } else {
       if (typeof showToast === "function") {
@@ -227,13 +244,14 @@ function setupUnitsListeners() {
   // Limpiar error al escribir
   input.oninput = () => clearUnitError();
 
-  // Agregar al hacer clic en el botón
-  btnAdd.onclick = () => addUnit();
+  btnAdd.onclick = () => {
+    addUnit().catch((err) => console.error("[settings] addUnit", err));
+  };
 
   // Agregar al presionar Enter
   input.onkeypress = (e) => {
     if (e.key === "Enter") {
-      addUnit();
+      addUnit().catch((err) => console.error("[settings] addUnit", err));
     }
   };
 }
@@ -249,9 +267,13 @@ function setupCurrenciesListeners() {
   if (!input || !btnAdd) return;
 
   input.oninput = () => clearCurrencyError();
-  btnAdd.onclick = () => addCurrency();
+  btnAdd.onclick = () => {
+    addCurrency().catch((err) => console.error("[settings] addCurrency", err));
+  };
   input.onkeypress = (e) => {
-    if (e.key === "Enter") addCurrency();
+    if (e.key === "Enter") {
+      addCurrency().catch((err) => console.error("[settings] addCurrency", err));
+    }
   };
 }
 
@@ -268,22 +290,22 @@ function setupConceptsListeners() {
   // Limpiar error al escribir
   input.oninput = () => clearConceptError();
 
-  // Agregar al hacer clic en el botón
-  btnAdd.onclick = () => addConcept();
+  btnAdd.onclick = () => {
+    addConcept().catch((err) => console.error("[settings] addConcept", err));
+  };
 
-  // Agregar al presionar Enter
   input.onkeypress = (e) => {
     if (e.key === "Enter") {
-      addConcept();
+      addConcept().catch((err) => console.error("[settings] addConcept", err));
     }
   };
 }
 
 /**
  * Agrega una nueva unidad de medida
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function addUnit() {
+async function addUnit() {
   const input = document.getElementById(ID_INPUT_NEW_UNIT);
   if (!input) return;
 
@@ -293,25 +315,20 @@ function addUnit() {
     return;
   }
 
-  const units = getData(STG_KEYS.UNITS) || [];
-
-  // Limpiar error previo
+  const units = await getUnits();
   clearUnitError();
 
-  // Verificar si ya existe
-  if (units.some(u => u.toLowerCase() === value.toLowerCase())) {
+  if (units.some((u) => u.toLowerCase() === value.toLowerCase())) {
     setUnitError("Esta unidad de medida ya existe");
     input.focus();
     return;
   }
 
-  // Agregar
   units.push(value);
-  setData(STG_KEYS.UNITS, units);
+  await saveUnits(units);
 
-  // Limpiar input y renderizar
   input.value = "";
-  renderUnits();
+  await renderUnits();
   input.focus();
 }
 
@@ -325,35 +342,10 @@ function normalizeCurrencyCode(value) {
 }
 
 /**
- * Inicializa monedas por defecto si no existen o la lista está vacía
- * @returns {void}
- */
-function ensureCurrenciesDefaults() {
-  if (typeof initCurrencies === "function") {
-    initCurrencies();
-    return;
-  }
-  const list = getData(STG_KEYS.CURRENCIES);
-  if (!Array.isArray(list) || list.length === 0) {
-    setData(STG_KEYS.CURRENCIES, [...DEFAULT_CURRENCIES]);
-  }
-}
-
-/**
- * Obtiene el catálogo de monedas (con defaults si hace falta)
- * @returns {Array<string>}
- */
-function getCurrencies() {
-  ensureCurrenciesDefaults();
-  const list = getData(STG_KEYS.CURRENCIES);
-  return Array.isArray(list) ? list : [...DEFAULT_CURRENCIES];
-}
-
-/**
  * Agrega una nueva moneda al catálogo
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function addCurrency() {
+async function addCurrency() {
   const input = document.getElementById(ID_INPUT_NEW_CURRENCY);
   if (!input) return;
 
@@ -371,7 +363,8 @@ function addCurrency() {
     return;
   }
 
-  const currencies = getCurrencies();
+  await ensureCurrenciesDefaults();
+  const currencies = await getCurrencies();
   if (currencies.some((c) => c === value)) {
     setCurrencyError("Esta moneda ya existe");
     input.focus();
@@ -379,22 +372,23 @@ function addCurrency() {
   }
 
   currencies.push(value);
-  setData(STG_KEYS.CURRENCIES, currencies);
+  await saveCurrencies(currencies);
 
   input.value = "";
-  renderCurrencies();
+  await renderCurrencies();
   input.focus();
 }
 
 /**
  * Renderiza la lista de monedas como chips
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderCurrencies() {
+async function renderCurrencies() {
   const container = document.getElementById(ID_CURRENCIES_LIST);
   if (!container) return;
 
-  const currencies = getCurrencies();
+  await ensureCurrenciesDefaults();
+  const currencies = await getCurrencies();
   container.innerHTML = "";
 
   currencies.forEach((currency, index) => {
@@ -415,20 +409,26 @@ function createCurrencyChip(currency, index) {
     colorClass: "bg-primary",
     showCloseButton: true,
     btnCloseWhite: true,
-    onClose: () => deleteCurrency(index),
+    onClose: () => {
+      deleteCurrency(index).catch((err) =>
+        console.error("[settings] deleteCurrency", err)
+      );
+    },
   });
 }
 
 /**
  * Indica si una moneda está en uso (stock.prices, products.prices o finanzas)
  * @param {string} currencyCode
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function isCurrencyInUse(currencyCode) {
+async function isCurrencyInUse(currencyCode) {
   const code = normalizeCurrencyCode(currencyCode);
   if (!code) return false;
 
-  const stockList = getData(STG_KEYS.STOCK) || [];
+  const stockList = isCacheLoaded(STG_KEYS.STOCK)
+    ? (CACHE.stock || [])
+    : await getAllStock();
   if (
     Array.isArray(stockList) &&
     stockList.some(
@@ -448,7 +448,9 @@ function isCurrencyInUse(currencyCode) {
   }
 
   // Finanzas: en uso si hay montos ≠ 0 (maps o listas inputs/outputs)
-  const finances = getData(PAGE_FINANCES) || [];
+  const finances = isCacheLoaded(STG_KEYS.FINANCES)
+    ? (CACHE.finances || [])
+    : await getAllFinances();
   const financeMapHasAmount = (map) => {
     if (!map || typeof map !== "object" || Array.isArray(map)) return false;
     const amountOf = (raw) => {
@@ -490,19 +492,19 @@ function isCurrencyInUse(currencyCode) {
 /**
  * Elimina una moneda (con validación de uso)
  * @param {number} index
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function deleteCurrency(index) {
+async function deleteCurrency(index) {
   clearUnitError();
   clearCurrencyError();
   clearConceptError();
 
-  const currencies = getCurrencies();
+  const currencies = await getCurrencies();
   if (index < 0 || index >= currencies.length) return;
 
   const currency = currencies[index];
 
-  if (isCurrencyInUse(currency)) {
+  if (await isCurrencyInUse(currency)) {
     setCurrencyError("No se puede eliminar: esta moneda está en uso");
     return;
   }
@@ -512,18 +514,18 @@ function deleteCurrency(index) {
 
 /**
  * Confirma la eliminación de una moneda
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteCurrency() {
+async function confirmDeleteCurrency() {
   if (DELETE_STATE.id === null || DELETE_STATE.id === undefined) return;
 
-  const currencies = getCurrencies();
+  const currencies = await getCurrencies();
   const index = DELETE_STATE.id;
   if (index < 0 || index >= currencies.length) return;
 
   const deleted = currencies[index];
 
-  if (isCurrencyInUse(deleted)) {
+  if (await isCurrencyInUse(deleted)) {
     setCurrencyError("No se puede eliminar: esta moneda está en uso");
     hideConfirmModal();
     return;
@@ -534,13 +536,13 @@ function confirmDeleteCurrency() {
   UNDO_STATE.index = index;
 
   currencies.splice(index, 1);
-  setData(STG_KEYS.CURRENCIES, currencies);
+  await saveCurrencies(currencies);
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderCurrencies();
+  await renderCurrencies();
   showSnackbar("Moneda eliminada");
 }
 
@@ -579,9 +581,9 @@ function clearCurrencyError() {
 
 /**
  * Agrega un nuevo concepto de gastos
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function addConcept() {
+async function addConcept() {
   const input = document.getElementById(ID_INPUT_NEW_CONCEPT);
   if (!input) return;
 
@@ -591,37 +593,32 @@ function addConcept() {
     return;
   }
 
-  const concepts = getData(STG_KEYS.EXPENSE_CONCEPTS) || [];
-
-  // Limpiar error previo
+  const concepts = await getExpenseConcepts();
   clearConceptError();
 
-  // Verificar si ya existe
-  if (concepts.some(c => c.toLowerCase() === value.toLowerCase())) {
+  if (concepts.some((c) => c.toLowerCase() === value.toLowerCase())) {
     setConceptError("Este concepto ya existe");
     input.focus();
     return;
   }
 
-  // Agregar
   concepts.push(value);
-  setData(STG_KEYS.EXPENSE_CONCEPTS, concepts);
+  await saveExpenseConcepts(concepts);
 
-  // Limpiar input y renderizar
   input.value = "";
-  renderConcepts();
+  await renderConcepts();
   input.focus();
 }
 
 /**
  * Renderiza la lista de unidades de medida como chips
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderUnits() {
+async function renderUnits() {
   const container = document.getElementById(ID_UNITS_LIST);
   if (!container) return;
 
-  const units = getData(STG_KEYS.UNITS) || [];
+  const units = await getUnits();
   container.innerHTML = "";
 
   units.forEach((unit, index) => {
@@ -632,13 +629,13 @@ function renderUnits() {
 
 /**
  * Renderiza la lista de conceptos de gastos como chips
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderConcepts() {
+async function renderConcepts() {
   const container = document.getElementById(ID_CONCEPTS_LIST);
   if (!container) return;
 
-  const concepts = getData(STG_KEYS.EXPENSE_CONCEPTS) || [];
+  const concepts = await getExpenseConcepts();
   container.innerHTML = "";
 
   concepts.forEach((concept, index) => {
@@ -659,7 +656,11 @@ function createUnitChip(unit, index) {
     colorClass: "bg-primary",
     showCloseButton: true,
     btnCloseWhite: true,
-    onClose: () => deleteUnit(index)
+    onClose: () => {
+      deleteUnit(index).catch((err) =>
+        console.error("[settings] deleteUnit", err)
+      );
+    },
   });
 }
 
@@ -675,126 +676,132 @@ function createConceptChip(concept, index) {
     colorClass: "bg-primary",
     showCloseButton: true,
     btnCloseWhite: true,
-    onClose: () => deleteConcept(index)
+    onClose: () => {
+      deleteConcept(index).catch((err) =>
+        console.error("[settings] deleteConcept", err)
+      );
+    },
   });
 }
 
 /**
  * Elimina una unidad de medida (con validación)
  * @param {number} index - Índice de la unidad a eliminar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function deleteUnit(index) {
-  // Limpiar errores previos
+async function deleteUnit(index) {
   clearUnitError();
   clearCurrencyError();
   clearConceptError();
 
-  const units = getData(STG_KEYS.UNITS) || [];
+  const units = await getUnits();
   if (index < 0 || index >= units.length) return;
 
   const unit = units[index];
 
-  // Verificar si está en uso en productos
   const products = CACHE.products || [];
-  const isInUse = products.some(p => p.um && p.um.toLowerCase() === unit.toLowerCase());
+  const isInUse = products.some(
+    (p) => p.um && p.um.toLowerCase() === unit.toLowerCase()
+  );
 
   if (isInUse) {
     setUnitError("No se puede eliminar: esta unidad está en uso en productos");
     return;
   }
 
-  // Confirmar eliminación
   openConfirmDeleteModal("unit", index, unit);
 }
 
 /**
  * Elimina un concepto de gastos (con validación)
  * @param {number} index - Índice del concepto a eliminar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function deleteConcept(index) {
-  // Limpiar errores previos
+async function deleteConcept(index) {
   clearUnitError();
   clearCurrencyError();
   clearConceptError();
 
-  const concepts = getData(STG_KEYS.EXPENSE_CONCEPTS) || [];
+  const concepts = await getExpenseConcepts();
   if (index < 0 || index >= concepts.length) return;
 
   const concept = concepts[index];
 
-  // Verificar si está en uso en gastos
-  const expenses = getData(STG_KEYS.EXPENSES) || [];
-  const isInUse = expenses.some(e => e.concept && e.concept.toLowerCase() === concept.toLowerCase());
+  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+    ? (CACHE.expenses || [])
+    : await getAllExpenses();
+  const isInUse = expenses.some(
+    (e) => e.concept && e.concept.toLowerCase() === concept.toLowerCase()
+  );
 
   if (isInUse) {
     setConceptError("No se puede eliminar: este concepto está en uso en gastos");
     return;
   }
 
-  // Confirmar eliminación
   openConfirmDeleteModal("concept", index, concept);
 }
 
 /**
  * Confirma la eliminación de una unidad de medida
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteUnit() {
+async function confirmDeleteUnit() {
   if (DELETE_STATE.id === null || DELETE_STATE.id === undefined) return;
 
-  const units = getData(STG_KEYS.UNITS) || [];
+  const units = await getUnits();
   const index = DELETE_STATE.id;
 
   if (index < 0 || index >= units.length) return;
 
   const deleted = units[index];
 
-  // Verificar nuevamente si está en uso
   const products = CACHE.products || [];
-  const isInUse = products.some(p => p.um && p.um.toLowerCase() === deleted.toLowerCase());
+  const isInUse = products.some(
+    (p) => p.um && p.um.toLowerCase() === deleted.toLowerCase()
+  );
 
   if (isInUse) {
     setUnitError("No se puede eliminar: esta unidad está en uso en productos");
     hideConfirmModal();
     return;
-  }
+  }  
 
-  // Guardar estado para undo
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = STG_KEYS.UNITS;
   UNDO_STATE.index = index;
 
-  // Eliminar
   units.splice(index, 1);
-  setData(STG_KEYS.UNITS, units);
+  await saveUnits(units);
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderUnits();
+  await renderUnits();
   showSnackbar("Unidad de medida eliminada");
 }
 
 /**
  * Confirma la eliminación de un concepto de gastos
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteConcept() {
+async function confirmDeleteConcept() {
   if (DELETE_STATE.id === null || DELETE_STATE.id === undefined) return;
 
-  const concepts = getData(STG_KEYS.EXPENSE_CONCEPTS) || [];
+  const concepts = await getExpenseConcepts();
   const index = DELETE_STATE.id;
 
   if (index < 0 || index >= concepts.length) return;
 
   const deleted = concepts[index];
 
-  // Verificar nuevamente si está en uso
-  const expenses = getData(STG_KEYS.EXPENSES) || [];
-  const isInUse = expenses.some(e => e.concept && e.concept.toLowerCase() === deleted.toLowerCase());
+  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+    ? (CACHE.expenses || [])
+    : await getAllExpenses();
+  const isInUse = expenses.some(
+    (e) => e.concept && e.concept.toLowerCase() === deleted.toLowerCase()
+  );
 
   if (isInUse) {
     setConceptError("No se puede eliminar: este concepto está en uso en gastos");
@@ -802,37 +809,19 @@ function confirmDeleteConcept() {
     return;
   }
 
-  // Guardar estado para undo
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = STG_KEYS.EXPENSE_CONCEPTS;
   UNDO_STATE.index = index;
 
-  // Eliminar
   concepts.splice(index, 1);
-  setData(STG_KEYS.EXPENSE_CONCEPTS, concepts);
+  await saveExpenseConcepts(concepts);
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderConcepts();
+  await renderConcepts();
   showSnackbar("Concepto de gastos eliminado");
-}
-
-/**
- * Obtiene todas las unidades de medida
- * @returns {Array<string>} Lista de unidades de medida
- */
-function getUnits() {
-  return getData(STG_KEYS.UNITS) || [];
-}
-
-/**
- * Obtiene todos los conceptos de gastos
- * @returns {Array<string>} Lista de conceptos de gastos
- */
-function getExpenseConcepts() {
-  return getData(STG_KEYS.EXPENSE_CONCEPTS) || [];
 }
 
 /**
@@ -921,7 +910,10 @@ function setupSalaryPercentageListener() {
   const btnSave = document.getElementById(ID_BTN_SAVE_SALARY_PERCENTAGE);
   if (!btnSave) return;
 
-  btnSave.onclick = saveSalaryPercentage;
+  btnSave.onclick = () =>
+    saveSalaryPercentage().catch((err) =>
+      console.error("[settings] saveSalaryPercentage", err)
+    );
 }
 
 /**
@@ -932,25 +924,28 @@ function setupSalesPointListener() {
   const btnSave = document.getElementById(ID_BTN_SAVE_SALES_POINT);
   if (!btnSave) return;
 
-  btnSave.onclick = saveSalesPoint;
+  btnSave.onclick = () =>
+    saveSalesPoint().catch((err) =>
+      console.error("[settings] saveSalesPoint", err)
+    );
 }
 
 /**
  * Carga el punto de venta actual
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function loadSalesPoint() {
+async function loadSalesPoint() {
   const input = document.getElementById(ID_INPUT_SALES_POINT);
   if (!input) return;
 
-  input.value = getSalesPoint();
+  input.value = await getSalesPoint();
 }
 
 /**
  * Guarda el punto de venta
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveSalesPoint() {
+async function saveSalesPoint() {
   const input = document.getElementById(ID_INPUT_SALES_POINT);
   if (!input) return;
 
@@ -969,7 +964,7 @@ function saveSalesPoint() {
     return;
   }
 
-  setData(STG_KEYS.SALES_POINT, value);
+  await saveSetting(STG_KEYS.SALES_POINT, value);
 }
 
 /**
@@ -1007,47 +1002,35 @@ function clearSalesPointError() {
 
 /**
  * Obtiene el punto de venta configurado
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function getSalesPoint() {
-  //const raw = localStorage.getItem(STG_KEYS.SALES_POINT);
-  const raw = getData(STG_KEYS.SALES_POINT);
-  
+async function getSalesPoint() {
+  const raw = await getSetting(STG_KEYS.SALES_POINT, "");
+
   if (raw === null) return "";
   return typeof raw === "string" ? raw.trim() : "";
-
-  /*try {
-    const parsed = JSON.parse(raw);
-    console.log("get Sales point: ", parsed)
-    return typeof parsed === "string" ? parsed.trim() : "";
-    
-  } catch (_) {
-    console.log("get Sales point: ", "error")
-    return "";
-  }*/
 }
 
 /**
  * Carga el porcentaje de salario actual
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function loadSalaryPercentage() {
+async function loadSalaryPercentage() {
   const input = document.getElementById(ID_INPUT_SALARY_PERCENTAGE);
   if (!input) return;
 
-  const percentage = getData(STG_KEYS.SALARY_PERCENTAGE);
+  const percentage = await getSetting(STG_KEYS.SALARY_PERCENTAGE, 1.7);
   input.value = percentage !== null && percentage !== undefined ? percentage : 1.7;
 }
 
 /**
  * Guarda el porcentaje de salario
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveSalaryPercentage() {
+async function saveSalaryPercentage() {
   const input = document.getElementById(ID_INPUT_SALARY_PERCENTAGE);
   if (!input) return;
 
-  // Limpiar error previo
   clearSalaryPercentageError();
 
   const value = parseFloat(input.value);
@@ -1057,8 +1040,7 @@ function saveSalaryPercentage() {
     return;
   }
 
-  setData(STG_KEYS.SALARY_PERCENTAGE, value);
-  // No mostrar snackbar, es un valor simple de modificar
+  await saveSetting(STG_KEYS.SALARY_PERCENTAGE, value);
 }
 
 /**
@@ -1101,11 +1083,20 @@ function clearSalaryPercentageError() {
 }
 
 /**
- * Obtiene el porcentaje de salario configurado
+ * Obtiene el porcentaje de salario configurado (sync: lectura directa de Storage/LS)
+ * Compatible con callers síncronos (contabilidad, home).
  * @returns {number} Porcentaje de salario (default: 1.7)
  */
 function getSalaryPercentage() {
-  const percentage = getData(STG_KEYS.SALARY_PERCENTAGE);
-  return percentage !== null && percentage !== undefined ? percentage : 1.7;
+  try {
+    const raw = localStorage.getItem(STG_KEYS.SALARY_PERCENTAGE);
+    if (raw == null || raw === "") return 1.7;
+    const parsed = JSON.parse(raw);
+    if (parsed === null || parsed === undefined || Number.isNaN(Number(parsed))) {
+      return 1.7;
+    }
+    return Number(parsed);
+  } catch (_) {
+    return 1.7;
+  }
 }
-

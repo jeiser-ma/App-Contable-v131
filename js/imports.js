@@ -27,9 +27,9 @@ const IMPORT_STATE_KEYS = typeof APP_STATE_KEYS !== "undefined"
  * Importa el estado de la app desde un string JSON.
  * Solo actualiza las claves permitidas (IMPORT_STATE_KEYS); ignora _exportedAt, _appVersion, etc.
  * @param {string} jsonString - Contenido del archivo JSON
- * @returns {{ ok: boolean, error?: string, imported?: number }}
+ * @returns {Promise<{ ok: boolean, error?: string, imported?: number }>}
  */
-function importAppStateFromJson(jsonString) {
+async function importAppStateFromJson(jsonString) {
   let parsed;
   try {
     parsed = JSON.parse(jsonString);
@@ -49,7 +49,10 @@ function importAppStateFromJson(jsonString) {
           const id = parsed[key];
           setCurrentStoreId(typeof id === "string" && id ? id : null);
         } else {
-          setData(key, parsed[key]);
+          await Storage.save(key, parsed[key]);
+          if (typeof invalidateCache === "function") {
+            invalidateCache(key);
+          }
         }
         imported++;
       } catch (_) {
@@ -79,7 +82,7 @@ function importAppStateFromFile(file) {
         resolve({ ok: false, error: "No se pudo leer el archivo." });
         return;
       }
-      resolve(importAppStateFromJson(text));
+      importAppStateFromJson(text).then(resolve);
     };
     reader.onerror = () => resolve({ ok: false, error: "Error al leer el archivo." });
     reader.readAsText(file, "UTF-8");

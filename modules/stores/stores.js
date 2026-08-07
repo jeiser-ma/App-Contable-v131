@@ -1,6 +1,7 @@
 // ===============================
 // Stores - App Contable
 // Gestión de puntos de venta / sucursales
+// Acceso a datos: database/repositories/stores.repository.js
 // ===============================
 
 //#region Constants
@@ -43,10 +44,17 @@ async function onStoresPageLoaded() {
 
   const btnConfirm = document.getElementById(BTN_ID_CONFIRM_STORE);
   if (btnConfirm) {
-    btnConfirm.onclick = saveStoreFromModal;
+    btnConfirm.onclick = () => {
+      saveStoreFromModal().catch((err) => {
+        console.error("[stores] saveStoreFromModal", err);
+        if (typeof showToast === "function") {
+          showToast("No se pudo guardar el punto de venta", TOAST_COLORS.DANGER, 3);
+        }
+      });
+    };
   }
 
-  renderStores();
+  await renderStores();
 }
 
 /**
@@ -88,11 +96,11 @@ function openAddStoreModal() {
 /**
  * Abre el modal para editar un punto de venta
  * @param {string} id
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openEditStoreModal(id) {
-  const store = getDataById(PAGE_STORES, id);
-  if (!store) return;
+async function openEditStoreModal(id) {
+  const store = await getStoreById(id);
+  if (!store?.id) return;
 
   STORES_STATE.elementToEdit = id;
   setModalHeader(MODAL_STORES, true);
@@ -133,7 +141,7 @@ function getStoreStatusFromModal() {
 
 /**
  * Guarda un punto de venta desde el modal (crear o editar)
- * @returns {void}
+ * @returns {Promise<void>}
  */
 async function saveStoreFromModal() {
   const name = getInputValue(ID_STORE_NAME).trim();
@@ -144,59 +152,43 @@ async function saveStoreFromModal() {
     return;
   }
 
-  //const allStores = getData(PAGE_STORES) || [];
   const allStores = await getAllStores();
-  console.log(allStores);
   const nameExists = allStores.some(
     (s) =>
-      s.name.toLowerCase() === name.toLowerCase()
-      && s.id !== STORES_STATE.elementToEdit
+      (s.name || "").toLowerCase() === name.toLowerCase() &&
+      s.id !== STORES_STATE.elementToEdit
   );
   if (nameExists) {
     setInputError(ID_STORE_NAME, "Ya existe un punto de venta con ese nombre");
     return;
   }
 
-  // if (STORES_STATE.elementToEdit) {
-  //   //const storeToEdit = getDataById(PAGE_STORES, STORES_STATE.elementToEdit);
-  //   const storeToEdit = await getStoreById(STORES_STATE.elementToEdit);
-  //   if (!storeToEdit) {
-  //     setInputError(ID_STORE_NAME, "El punto de venta no existe");
-  //     return;
-  //   }
-  //   // setDataById(PAGE_STORES, {
-  //   //   ...storeToEdit,
-  //   //   name,
-  //   //   active,
-  //   // });
-  //   saveStore(createStore({...storeToEdit, name, active,}));
-  // } else {
-  //   setDataById(PAGE_STORES, {
-  //     id: crypto.randomUUID(),
-  //     name,
-  //     active,
-  //     createdAt: new Date().toISOString(),
-  //   });
-  // }
-  const storeToEdit = await getStoreById(STORES_STATE.elementToEdit);
-  await saveStore(createStore({ ...storeToEdit, name, active, }));
+  if (STORES_STATE.elementToEdit) {
+    const existing = await getStoreById(STORES_STATE.elementToEdit);
+    if (!existing?.id) {
+      setInputError(ID_STORE_NAME, "El punto de venta no existe");
+      return;
+    }
+    await saveStore({ ...existing, name, active });
+  } else {
+    await saveStore(createStore({ name, active }));
+  }
 
   hideModalModules();
-  renderStores();
+  await renderStores();
   if (typeof refreshCurrentStoreSelector === "function") {
-    refreshCurrentStoreSelector();
+    await refreshCurrentStoreSelector();
   }
 }
 
 /**
  * Abre el modal de confirmación para eliminar
  * @param {string} id
- * @returns {void}
+ * @returns {Promise<void>}
  */
 async function openDeleteStoreModal(id) {
-  //const store = getDataById(PAGE_STORES, id);
   const store = await getStoreById(id);
-  if (!store) return;
+  if (!store?.id) return;
 
   DELETE_STATE.type = "store";
   DELETE_STATE.id = id;
@@ -205,33 +197,26 @@ async function openDeleteStoreModal(id) {
 
 /**
  * Confirma la eliminación de un punto de venta
- * @returns {void}
+ * @returns {Promise<void>}
  */
 async function confirmDeleteStore() {
   if (!DELETE_STATE.id) return;
 
-  // const stores = getData(PAGE_STORES) || [];
-  // const deleted = stores.find((s) => s.id === DELETE_STATE.id);
   const deleted = await getStoreById(DELETE_STATE.id);
-  if (!deleted) return;
-  
+  if (!deleted?.id) return;
+
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = PAGE_STORES;
 
-  // setData(
-  //   PAGE_STORES,
-  //   stores.filter((s) => s.id !== DELETE_STATE.id)
-  // );
-
-  await deleteStore(DELETE_STATE.id)
+  await deleteStore(DELETE_STATE.id);
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderStores();
+  await renderStores();
   if (typeof refreshCurrentStoreSelector === "function") {
-    refreshCurrentStoreSelector();
+    await refreshCurrentStoreSelector();
   }
   showSnackbar("Punto de venta eliminado");
 }
@@ -312,8 +297,20 @@ function renderStoresList(stores) {
 
     const btnEdit = node.querySelector(".btn-edit-store");
     const btnDelete = node.querySelector(".btn-delete-store");
-    if (btnEdit) btnEdit.onclick = () => openEditStoreModal(store.id);
-    if (btnDelete) btnDelete.onclick = () => openDeleteStoreModal(store.id);
+    if (btnEdit) {
+      btnEdit.onclick = () => {
+        openEditStoreModal(store.id).catch((err) =>
+          console.error("[stores] openEditStoreModal", err)
+        );
+      };
+    }
+    if (btnDelete) {
+      btnDelete.onclick = () => {
+        openDeleteStoreModal(store.id).catch((err) =>
+          console.error("[stores] openDeleteStoreModal", err)
+        );
+      };
+    }
 
     list.appendChild(node);
   });
@@ -321,12 +318,10 @@ function renderStoresList(stores) {
 
 /**
  * Filtra, ordena y renderiza los puntos de venta
- * @returns {void}
+ * @returns {Promise<void>}
  */
 async function renderStores() {
-  //const allStores = getData(PAGE_STORES) || [];
   const allStores = await getAllStores();
-  console.log(allStores);
   const filtered = filterStores(allStores);
   const sorted = sortStores(filtered);
 

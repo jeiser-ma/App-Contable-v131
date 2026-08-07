@@ -18,10 +18,10 @@ async function getAllStores() {
 
 /**
  * @param {string} id
- * @returns {Promise<Object|null>}
+ * @returns {Promise<Object|null>} null si no existe o id vacío
  */
 async function getStoreById(id) {
-  return storesRepository.getById(id) || {};
+  return storesRepository.getById(id);
 }
 
 /**

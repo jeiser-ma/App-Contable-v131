@@ -47,17 +47,17 @@ function downloadFile(content, filename, mimeType, addBom = false) {
 // ==============================================
 
 /**
- * Obtiene el estado completo de la app desde localStorage
- * @returns {Object}
+ * Obtiene el estado completo de la app desde Storage
+ * @returns {Promise<Object>}
  */
-function getAppState() {
+async function getAppState() {
   const state = {};
   for (const key of APP_STATE_KEYS) {
     try {
       if (key === STG_KEYS.CURRENT_STORE_ID && typeof getCurrentStoreId === "function") {
         state[key] = getCurrentStoreId();
       } else {
-        state[key] = getData(key);
+        state[key] = await Storage.get(key);
       }
     } catch (_) {
       state[key] = null;
@@ -73,11 +73,11 @@ function getAppState() {
  * @param {Object} [options]
  * @param {boolean} [options.download=true] - Si true, descarga el archivo. Si false, devuelve el string.
  * @param {string} [options.filename] - Nombre del archivo (por defecto: app-state-YYYY-MM-DD.json)
- * @returns {string|void}
+ * @returns {Promise<string|void>}
  */
-function exportAppStateToJson(options = {}) {
+async function exportAppStateToJson(options = {}) {
   const { download = true, filename } = options;
-  const state = getAppState();
+  const state = await getAppState();
   const json = JSON.stringify(state, null, 2);
   const name = filename || `app-state-${new Date().toISOString().slice(0, 10)}.json`;
 
@@ -208,13 +208,14 @@ function csvHeadersOnly(headerMap) {
 /**
  * Exporta la contabilidad diaria a CSV según el formato acordado
  * @param {Object} accounting - Registro de contabilidad del día
- * @param {Array<Object>} productsCatalog - Catálogo de productos (para resolver nombres)
- * @returns {boolean} true si se generó la descarga
+ * @param {Array<Object>} [productsCatalog] - Catálogo de productos (legacy; se usa CACHE.products)
+ * @returns {Promise<boolean>} true si se generó la descarga
  */
-function exportAccountingToCsv(accounting) {
+async function exportAccountingToCsv(accounting) {
   if (!accounting) return false;
 
-  const salesPoint = typeof getSalesPoint === "function" ? getSalesPoint() : "";
+  const salesPoint =
+    typeof getSalesPoint === "function" ? await getSalesPoint() : "";
   const isoDate = accounting.date || new Date().toISOString().slice(0, 10);
   // Catálogo solo para resolver nombres; la fila de CSV es accounting.products (ya filtrada al guardar)
   const products = (typeof CACHE !== "undefined" && CACHE.products) || [];
@@ -258,7 +259,9 @@ function exportAccountingToCsv(accounting) {
 
   // Resolver Entradas y Salidas de ayer
   const yesterday = getYesterday(accounting.date);
-  const movements = getData(PAGE_MOVEMENTS) || [];
+  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+    ? (CACHE.movements || [])
+    : await getAllMovements();
   // Entradas de ayer
   const yesterdayMovements = movements.filter(m => m.date === yesterday);
   // Entradas de ayer
@@ -384,24 +387,24 @@ function buildFinanceCsvFlowPivotRows(list, currencyList) {
  * @param {Object} finance
  * @param {Array<Object>} storesCatalog
  * @param {string[]} [currencies]
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function exportFinancesToCsv(finance, storesCatalog, currencies) {
+async function exportFinancesToCsv(finance, storesCatalog, currencies) {
   if (!finance) return false;
 
   let currencyList = Array.isArray(currencies) ? currencies.slice() : [];
   if (currencyList.length === 0) {
     if (typeof getFinanceDisplayCurrencies === "function") {
-      currencyList = getFinanceDisplayCurrencies(finance);
+      currencyList = await getFinanceDisplayCurrencies(finance);
     } else if (typeof getCurrencies === "function") {
-      currencyList = getCurrencies();
+      currencyList = await getCurrencies();
     } else {
       currencyList = ["CUP", "USD"];
     }
   }
   currencyList = [
     ...new Set(
-      currencyList
+      (Array.isArray(currencyList) ? currencyList : [])
         .map((c) => String(c || "").trim().toUpperCase())
         .filter(Boolean)
     ),

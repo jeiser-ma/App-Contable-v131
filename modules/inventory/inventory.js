@@ -82,11 +82,15 @@ async function onInventoryPageLoaded() {
   // Configurar botón de confirmar del modal
   const btnConfirm = document.getElementById(BTN_ID_CONFIRM_INVENTORY);
   if (btnConfirm) {
-    btnConfirm.onclick = saveInventoryFromModal;
+    btnConfirm.onclick = () => {
+      saveInventoryFromModal().catch((err) =>
+        console.error("[inventory] saveInventoryFromModal", err)
+      );
+    };
   }
 
   // Renderizar la lista de inventario
-  renderInventory();
+  await renderInventory();
 }
 
 /**
@@ -158,7 +162,9 @@ function handleScanInventoryCode() {
     onSuccess: (decodedText) => {
       const found = CACHE.products.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
-        openAddInventoryModal(found.id);
+        openAddInventoryModal(found.id).catch((err) =>
+          console.error("[inventory] openAddInventoryModal", err)
+        );
       } else {
         if (typeof showToast === "function") {
           showToast("No existe un producto con el código escaneado", TOAST_COLORS.WARNING, 3);
@@ -173,9 +179,9 @@ function handleScanInventoryCode() {
 /**
  * Abre el modal para realizar inventario de un producto
  * @param {string} productId - ID del producto
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openAddInventoryModal(productId) {
+async function openAddInventoryModal(productId) {
 
   // Obtener el producto
   const product = getProductFromCache(productId);
@@ -201,13 +207,12 @@ function openAddInventoryModal(productId) {
 
   // Obtener inventario existente para este producto en esta fecha (si existe)
   const date = INVENTORY_STATE.filterDate || getToday();
-  const allInventory = getData(PAGE_INVENTORY) || [];
-  const existingInventory = allInventory.find(
-    (inv) =>
-      inv.productId === productId &&
-      inv.date === date &&
-      ["CONFIRMED", "CLOSED"].includes(inv.status)
-  );
+  const existingInventoryRaw = await getInventoryByProductAndDate(productId, date);
+  const existingInventory =
+    existingInventoryRaw &&
+    ["CONFIRMED", "CLOSED"].includes(existingInventoryRaw.status)
+      ? existingInventoryRaw
+      : null;
 
   // Cargar valores existentes o limpiar campos
   if (existingInventory) {
@@ -233,24 +238,27 @@ function openAddInventoryModal(productId) {
  * @param {string} date - Fecha YYYY-MM-DD
  * @param {number|null} warehouseQuantity - Cantidad en almacén
  * @param {number|null} storeQuantity - Cantidad en tienda
- * @returns {Object|undefined} El inventario guardado o undefined si falla
+ * @returns {Promise<Object|undefined>} El inventario guardado o undefined si falla
  */
-function saveInventory(productId, date, warehouseQuantity, storeQuantity) {
-  const inventory = getData(PAGE_INVENTORY) || [];
-  const existingInv = inventory.find(
-    (inv) => inv.productId === productId && inv.date === date
-  );
+async function saveInventory(productId, date, warehouseQuantity, storeQuantity) {
+  const existingInv = await getInventoryByProductAndDate(productId, date);
 
-  const finalInv = {
-    id: existingInv ? existingInv.id : crypto.randomUUID(), 
-    productId,
-    warehouseQuantity: warehouseQuantity != null ? roundTo2(warehouseQuantity) : null,
-    storeQuantity: storeQuantity != null ? roundTo2(storeQuantity) : null,
-    date,
-    status: "CONFIRMED",
-    createdAt: existingInv ? existingInv.createdAt : new Date().toISOString(),
-  };
-  setDataById(PAGE_INVENTORY, finalInv);
+  const finalInv = existingInv
+    ? {
+        ...existingInv,
+        warehouseQuantity: warehouseQuantity != null ? roundTo2(warehouseQuantity) : null,
+        storeQuantity: storeQuantity != null ? roundTo2(storeQuantity) : null,
+        status: "CONFIRMED",
+      }
+    : createInventoryCount({
+        productId,
+        warehouseQuantity: warehouseQuantity != null ? roundTo2(warehouseQuantity) : null,
+        storeQuantity: storeQuantity != null ? roundTo2(storeQuantity) : null,
+        date,
+        status: "CONFIRMED",
+      });
+
+  await saveInventoryCount(finalInv);
 
   return finalInv;
 }
@@ -363,18 +371,16 @@ function getValidatedInventoryValuesFromModal() {
 /**
  * Guarda el conteo de inventario desde el modal.
  * Valida entradas, resuelve valores y delega el guardado a saveInventory.
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveInventoryFromModal() {
+async function saveInventoryFromModal() {
   const result = getValidatedInventoryValuesFromModal();
   if (!result.valid) return;
 
   // No permitir guardar si el inventario ya está cerrado (contabilidad cerrada)
-  const inventory = getData(PAGE_INVENTORY) || [];
-  const existingInv = inventory.find(
-    (inv) =>
-      inv.productId === result.productId &&
-      inv.date === result.date
+  const existingInv = await getInventoryByProductAndDate(
+    result.productId,
+    result.date
   );
   if (isInventoryClosed(existingInv)) {
     showToast("No se puede editar: la contabilidad de esta fecha está cerrada", TOAST_COLORS.DANGER, 3);
@@ -382,30 +388,29 @@ function saveInventoryFromModal() {
   }
   
   // Guardar el inventario
-  saveInventory(result.productId, result.date, result.warehouseQuantity, result.storeQuantity);
+  await saveInventory(result.productId, result.date, result.warehouseQuantity, result.storeQuantity);
 
   // Cerrar modal y actualizar vista
   hideModalModules();
   // Limpiar el elemento a editar
   INVENTORY_STATE.elementToEdit = null;
   // Renderizar la lista de inventario
-  renderInventory();
+  await renderInventory();
 }
 
 /**
  * Elimina un conteo de inventario
  * @param {string} inventoryId - ID del conteo a eliminar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openDeleteInventoryModal(inventoryId) {
+async function openDeleteInventoryModal(inventoryId) {
   // No permitir eliminar inventarios virtuales de stock cero
   if (inventoryId?.startsWith("zero-stock-")) {
     return;
   }
 
-  const inventory = getData(PAGE_INVENTORY) || [];
-  const inv = inventory.find((i) => i.id === inventoryId);
-  if (!inv) return;
+  const inv = await getInventoryById(inventoryId);
+  if (!inv?.id) return;
 
   // No permitir eliminar inventarios cerrados (contabilidad cerrada)
   if (isInventoryClosed(inv)) {
@@ -425,14 +430,13 @@ function openDeleteInventoryModal(inventoryId) {
 
 /**
  * Confirma la eliminación de un conteo de inventario
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteInventory() {
+async function confirmDeleteInventory() {
   if (!DELETE_STATE.id) return;
 
-  const inventory = getData(PAGE_INVENTORY) || [];
-  const deleted = inventory.find((i) => i.id === DELETE_STATE.id);
-  if (!deleted) return;
+  const deleted = await getInventoryById(DELETE_STATE.id);
+  if (!deleted?.id) return;
 
   // No permitir eliminar inventarios cerrados (contabilidad cerrada)
   if (isInventoryClosed(deleted)) {
@@ -444,14 +448,13 @@ function confirmDeleteInventory() {
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = PAGE_INVENTORY;
 
-  const updated = inventory.filter((i) => i.id !== DELETE_STATE.id);
-  setData(PAGE_INVENTORY, updated);
+  await deleteInventoryCount(DELETE_STATE.id);
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderInventory();
+  await renderInventory();
   showSnackbar("Conteo de inventario eliminado");
 }
 
@@ -517,7 +520,11 @@ function renderPendingInventoryList(products, allComplete = false) {
 
     const btnAdd = node.querySelector(".btn-add-inventory");
     if (btnAdd) {
-      btnAdd.onclick = () => openAddInventoryModal(product.id);
+      btnAdd.onclick = () => {
+        openAddInventoryModal(product.id).catch((err) =>
+          console.error("[inventory] openAddInventoryModal", err)
+        );
+      };
     }
 
     list.appendChild(node);
@@ -595,7 +602,11 @@ function renderPartialInventoryList(inventoryCounts) {
         btnAdd.setAttribute("title", "Contabilidad cerrada: no se puede editar");
         btnAdd.style.cursor = "not-allowed";
       } else {
-        btnAdd.onclick = () => openAddInventoryModal(inv.productId);
+        btnAdd.onclick = () => {
+          openAddInventoryModal(inv.productId).catch((err) =>
+            console.error("[inventory] openAddInventoryModal", err)
+          );
+        };
       }
     }
 
@@ -606,7 +617,11 @@ function renderPartialInventoryList(inventoryCounts) {
         btnDelete.setAttribute("title", "Contabilidad cerrada: no se puede eliminar");
         btnDelete.style.cursor = "not-allowed";
       } else {
-        btnDelete.onclick = () => openDeleteInventoryModal(inv.id);
+        btnDelete.onclick = () => {
+          openDeleteInventoryModal(inv.id).catch((err) =>
+            console.error("[inventory] openDeleteInventoryModal", err)
+          );
+        };
       }
     }
 
@@ -666,7 +681,11 @@ function renderCompletedInventoryList(inventoryCounts) {
         btnDelete.style.cursor = "not-allowed";
         btnDelete.title = "No se puede eliminar el inventario de un producto sin stock o contabilidad cerrada";
       } else {
-        btnDelete.onclick = () => openDeleteInventoryModal(inv.id);
+        btnDelete.onclick = () => {
+          openDeleteInventoryModal(inv.id).catch((err) =>
+            console.error("[inventory] openDeleteInventoryModal", err)
+          );
+        };
       }
     }
 
@@ -677,20 +696,20 @@ function renderCompletedInventoryList(inventoryCounts) {
 /**
  * Función principal que renderiza el inventario
  * Separa productos en pendientes, parciales y completados según la fecha seleccionada
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderInventory() {
+async function renderInventory() {
   const date =
     INVENTORY_STATE.filterDate || new Date().toISOString().split("T")[0];
   const allProducts = CACHE.products || [];
-  const allInventory = getData(PAGE_INVENTORY) || [];
+  const dayInventoryRaw = await getInventoryByDate(date);
 
   // Filtrar productos por búsqueda
   const filteredProducts = filterInventoryProductsByName(allProducts);
 
   // Obtener inventarios del día seleccionado (CONFIRMED y CLOSED se muestran)
-  const dayInventory = allInventory.filter(
-    (inv) => inv.date === date && ["CONFIRMED", "CLOSED"].includes(inv.status)
+  const dayInventory = dayInventoryRaw.filter((inv) =>
+    ["CONFIRMED", "CLOSED"].includes(inv.status)
   );
 
   // Separar inventarios en parciales y completados
@@ -722,8 +741,8 @@ function renderInventory() {
   });
 
   // Productos con stock cero: persistir inventario 0/0 y mostrarlos como completados
-  zeroStockProducts.forEach((product) => {
-    saveInventory(product.id, date, 0, 0);
+  for (const product of zeroStockProducts) {
+    await saveInventory(product.id, date, 0, 0);
 
     // Crear inventario virtual para productos con stock cero
     const virtualInventory = {
@@ -737,7 +756,7 @@ function renderInventory() {
     };
     completedInventory.push(virtualInventory);
     inventoryProductIds.add(product.id); // Agregar a la lista para que no aparezca en pendientes
-  });
+  }
 
   // Productos pendientes: no tienen ningún inventario y no tienen stock cero
   const pendingProducts = filteredProducts.filter((p) => {

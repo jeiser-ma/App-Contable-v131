@@ -27,7 +27,11 @@ document.getElementById(ID_MODALS_CONTAINER).addEventListener("click", (e) => {
  * @returns {void}
  */
 function confirmDelete() {
-  if (!DELETE_STATE.type || !DELETE_STATE.id) {
+  if (
+    !DELETE_STATE.type ||
+    DELETE_STATE.id === null ||
+    DELETE_STATE.id === undefined
+  ) {
     console.warn("No hay elemento configurado para eliminar");
     return;
   }
@@ -38,7 +42,12 @@ function confirmDelete() {
   const confirmFunction = window[`confirmDelete${functionName}`];
   
   if (confirmFunction && typeof confirmFunction === "function") {
-    confirmFunction();
+    const result = confirmFunction();
+    if (result && typeof result.then === "function") {
+      result.catch((err) =>
+        console.error(`[confirmDelete] confirmDelete${functionName}`, err)
+      );
+    }
   } else {
     console.error(`No se encontró la función confirmDelete${functionName}`);
   }

@@ -130,8 +130,31 @@ Así IndexedDB (HU14) no obliga a reescribir callers otra vez.
 12. **HU12** Finances Repository ✅
     - Extra: Stock + Settings repositories ✅
 13. **HU13** Migrar módulos existentes (dejar de usar `getData`/`setData` directo)
+    - ✅ stores + undo stores + current-store (stores vía repo)
+    - ✅ settings: units / currencies / concepts (+ undo)
+    - ✅ expenses, movements, inventory, products (+ undo)
+    - ✅ accounting, finances
+    - ✅ home, exports/imports, list-counter
+    - Legado aceptable: `getData`/`setData` solo en `storage.js` (API), `auth.js` (login index), `loadCache` sync (usa getData; repos usan `loadCacheAsync`/`Storage`)
+    - `getSalaryPercentage` / `getCurrentStoreId` leen localStorage en el mismo formato JSON que Storage (sync UI)
 14. **HU14** IndexedDB Provider
 15. **HU15** Migración LocalStorage → IndexedDB
+
+### HU13 — Orden de migración recomendado
+
+| # | Estado | Qué |
+|---|--------|-----|
+| 0 | ✅ | stores + undo + current-store |
+| 1 | ✅ | settings units/currencies/concepts |
+| 2 | ✅ | expenses |
+| 3 | ✅ | movements (+ updateProductQuantity) |
+| 4 | ✅ | inventory |
+| 5 | ✅ | products |
+| 6 | ✅ | accounting |
+| 7 | ✅ | finances |
+| 8 | ✅ | home |
+| 9 | ✅ | exports / imports (+ invalidateCache) |
+| 10 | parcial | currentStoreId/salary sync LS (mismo shape que Storage) |
 
 ## Schemas (HU03)
 

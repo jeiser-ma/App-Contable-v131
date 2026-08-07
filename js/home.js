@@ -13,25 +13,35 @@ function onHomePageLoaded() {
 
   // Usar setTimeout para asegurar que el DOM esté completamente renderizado
   setTimeout(() => {
-    updateDashboard();
+    updateDashboard().catch((err) =>
+      console.error("[home] updateDashboard", err)
+    );
     setupClickableCards();
     setupWhatsAppButton();
-    updateAccountingSummary();
+    updateAccountingSummary().catch((err) =>
+      console.error("[home] updateAccountingSummary", err)
+    );
   }, 100);
 }
 
 /**
  * Actualiza todas las métricas del dashboard
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function updateDashboard() {
+async function updateDashboard() {
   console.log("updateDashboard ejecutado");
 
   // Obtener datos
   const products = CACHE.products || [];
-  const movements = getData(PAGE_MOVEMENTS) || [];
-  const expenses = getData(PAGE_EXPENSES) || [];
-  const inventory = getData(PAGE_INVENTORY) || [];
+  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+    ? (CACHE.movements || [])
+    : await getAllMovements();
+  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+    ? (CACHE.expenses || [])
+    : await getAllExpenses();
+  const inventory = isCacheLoaded(STG_KEYS.INVENTORY)
+    ? (CACHE.inventory || [])
+    : await getAllInventory();
 
   console.log("Total productos:", products.length);
 
@@ -279,34 +289,49 @@ function getTomorrow(date) {
 
 
 /**
- * Obtiene el porcentaje de salario desde settings
- * @returns {number} Porcentaje de salario (por defecto 1.7)
+ * Obtiene el porcentaje de salario (definido en settings.js al cargar layout)
+ * Fallback local si settings aún no está en el bundle.
+ * @returns {number}
  */
-function getSalaryPercentage() {
-  // Intentar usar la función de settings.js si está disponible
-  if (typeof window.getSalaryPercentage === "function") {
-    return window.getSalaryPercentage();
+function resolveSalaryPercentage() {
+  if (typeof getSalaryPercentage === "function") {
+    // settings.js pisa getSalaryPercentage en layout; home no redefine
+    try {
+      return getSalaryPercentage();
+    } catch (_) {
+      /* follow fallback */
+    }
   }
-  // Si no está disponible, leer usando getData
-  const percentage = getData(STG_KEYS.SALARY_PERCENTAGE);
-  return percentage !== null && percentage !== undefined ? percentage : 1.7;
+  try {
+    const raw = localStorage.getItem(STG_KEYS.SALARY_PERCENTAGE);
+    if (raw == null || raw === "") return 1.7;
+    const parsed = JSON.parse(raw);
+    if (parsed === null || parsed === undefined || Number.isNaN(Number(parsed))) {
+      return 1.7;
+    }
+    return Number(parsed);
+  } catch (_) {
+    return 1.7;
+  }
 }
 
 /**
  * Calcula y actualiza el resumen de contabilidad del día
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function updateAccountingSummary() {
+async function updateAccountingSummary() {
   const today = getToday();
   const yesterday = getYesterday(today);
 
   // Obtener datos
-  const allAccounting = getData(STG_KEYS.ACCOUNTING) || [];
+  const allAccounting = isCacheLoaded(STG_KEYS.ACCOUNTING)
+    ? (CACHE.accounting || [])
+    : await getAllAccounting();
   let accounting = allAccounting.find(a => a.date === today);
 
   // Si no existe, crear uno nuevo
   if (!accounting) {
-    accounting = createTodayAccounting(today, yesterday);
+    accounting = await createTodayAccounting(today, yesterday);
   }
 
   // Actualizar valores en el DOM
@@ -344,16 +369,24 @@ function updateAccountingSummary() {
  * Crea un objeto de contabilidad para hoy
  * @param {string} today - Fecha de hoy en formato YYYY-MM-DD
  * @param {string} yesterday - Fecha de ayer en formato YYYY-MM-DD
- * @returns {Object} Objeto de contabilidad
+ * @returns {Promise<Object>} Objeto de contabilidad
  */
-function createTodayAccounting(today, yesterday) {
+async function createTodayAccounting(today, yesterday) {
   const products = CACHE.products || [];
-  const movements = getData(PAGE_MOVEMENTS) || [];
-  const inventory = getData(PAGE_INVENTORY) || [];
-  const expenses = getData(PAGE_EXPENSES) || [];
+  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+    ? (CACHE.movements || [])
+    : await getAllMovements();
+  const inventory = isCacheLoaded(STG_KEYS.INVENTORY)
+    ? (CACHE.inventory || [])
+    : await getAllInventory();
+  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+    ? (CACHE.expenses || [])
+    : await getAllExpenses();
 
   // Obtener contabilidad de ayer (si existe y está cerrada)
-  const allAccounting = getData(PAGE_ACCOUNTING) || [];
+  const allAccounting = isCacheLoaded(STG_KEYS.ACCOUNTING)
+    ? (CACHE.accounting || [])
+    : await getAllAccounting();
   const yesterdayAccounting = allAccounting.find(a => a.date === yesterday && a.closed);
 
   const accountingProducts = products.map(product => {
@@ -427,7 +460,7 @@ function createTodayAccounting(today, yesterday) {
     totalExpenses: totalExpenses,
     totalAmount: totalAmount,
     difference: totalAmount - totalSales,
-    salaryPercentage: getSalaryPercentage(),
+    salaryPercentage: resolveSalaryPercentage(),
     nominalSalary: 0,
     realSalary: 0,
     closed: existingAccounting?.closed || false,
@@ -435,4 +468,3 @@ function createTodayAccounting(today, yesterday) {
     closedAt: existingAccounting?.closedAt || null
   };
 }
-

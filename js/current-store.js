@@ -1,12 +1,13 @@
 // ===============================
 // Punto de venta actual (contexto global)
 // UI + persistencia. Aún no filtra pantallas ni cálculos.
+// Stores: repositorio. currentStoreId: settings / localStorage.
 // ===============================
 
 const ID_CURRENT_STORE_SELECT = "currentStoreSelect";
 
 /**
- * Obtiene el id del punto de venta seleccionado
+ * Obtiene el id del punto de venta seleccionado (sync, UI)
  * @returns {string|null}
  */
 function getCurrentStoreId() {
@@ -30,26 +31,28 @@ function setCurrentStoreId(id) {
     localStorage.removeItem(STG_KEYS.CURRENT_STORE_ID);
     return;
   }
-  setData(STG_KEYS.CURRENT_STORE_ID, String(id));
+  // Mismo formato que Storage/LocalStorageProvider (JSON)
+  localStorage.setItem(STG_KEYS.CURRENT_STORE_ID, JSON.stringify(String(id)));
 }
 
 /**
  * Devuelve el store actual (objeto) o null
- * @returns {Object|null}
+ * @returns {Promise<Object|null>}
  */
-function getCurrentStore() {
+async function getCurrentStore() {
   const id = getCurrentStoreId();
   if (!id) return null;
-  return getDataById(STG_KEYS.STORES, id) || null;
+  const store = await getStoreById(id);
+  return store?.id ? store : null;
 }
 
 /**
  * Asegura un currentStoreId válido (activo si es posible).
  * Si el guardado no existe o está vacío, elige el primer store activo (o el primero).
- * @returns {string|null}
+ * @returns {Promise<string|null>}
  */
-function ensureCurrentStoreId() {
-  const stores = getData(STG_KEYS.STORES) || [];
+async function ensureCurrentStoreId() {
+  const stores = await getAllStores();
   if (!Array.isArray(stores) || stores.length === 0) {
     setCurrentStoreId(null);
     return null;
@@ -67,10 +70,10 @@ function ensureCurrentStoreId() {
 
 /**
  * Opciones del selector: activos + el actual si está inactivo
- * @returns {Array<Object>}
+ * @returns {Promise<Array<Object>>}
  */
-function getStoresForSelector() {
-  const stores = getData(STG_KEYS.STORES) || [];
+async function getStoresForSelector() {
+  const stores = await getAllStores();
   if (!Array.isArray(stores)) return [];
 
   const currentId = getCurrentStoreId();
@@ -87,14 +90,14 @@ function getStoresForSelector() {
 
 /**
  * Rellena el <select> del navbar según stores y currentStoreId
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function refreshCurrentStoreSelector() {
+async function refreshCurrentStoreSelector() {
   const select = document.getElementById(ID_CURRENT_STORE_SELECT);
   if (!select) return;
 
-  const selectedId = ensureCurrentStoreId();
-  const options = getStoresForSelector();
+  const selectedId = await ensureCurrentStoreId();
+  const options = await getStoresForSelector();
 
   select.replaceChildren();
 
@@ -127,13 +130,13 @@ function refreshCurrentStoreSelector() {
 
 /**
  * Inicializa el selector del navbar (opciones + change)
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function initCurrentStoreSelector() {
+async function initCurrentStoreSelector() {
   const select = document.getElementById(ID_CURRENT_STORE_SELECT);
   if (!select) return;
 
-  refreshCurrentStoreSelector();
+  await refreshCurrentStoreSelector();
 
   select.onchange = () => {
     const id = select.value || null;

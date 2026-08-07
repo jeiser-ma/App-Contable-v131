@@ -56,10 +56,16 @@ async function saveUnits(units) {
   await saveSetting(STG_KEYS.UNITS, Array.isArray(units) ? units : []);
 }
 
-/** @returns {Promise<string[]>} */
+/** @returns {Promise<string[]>} catálogo; si no hay datos, persiste defaults */
 async function getCurrencies() {
-  const list = await getSetting(STG_KEYS.CURRENCIES, [...DEFAULT_CURRENCIES]);
-  return Array.isArray(list) ? list : [];
+  await ensureCurrenciesDefaults();
+  const list = await getSetting(STG_KEYS.CURRENCIES, null);
+  if (!Array.isArray(list) || list.length === 0) {
+    return typeof DEFAULT_CURRENCIES !== "undefined"
+      ? [...DEFAULT_CURRENCIES]
+      : ["CUP", "USD"];
+  }
+  return list;
 }
 
 /**
@@ -71,6 +77,23 @@ async function saveCurrencies(currencies) {
     STG_KEYS.CURRENCIES,
     Array.isArray(currencies) ? currencies : []
   );
+}
+
+/**
+ * Si no hay monedas (o lista vacía), persiste DEFAULT_CURRENCIES.
+ * @returns {Promise<string[]>} catálogo resultante
+ */
+async function ensureCurrenciesDefaults() {
+  const raw = await Storage.get(STG_KEYS.CURRENCIES);
+  if (!Array.isArray(raw) || raw.length === 0) {
+    const defaults =
+      typeof DEFAULT_CURRENCIES !== "undefined"
+        ? [...DEFAULT_CURRENCIES]
+        : ["CUP", "USD"];
+    await saveCurrencies(defaults);
+    return defaults;
+  }
+  return raw;
 }
 
 /** @returns {Promise<string[]>} */

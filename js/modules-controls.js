@@ -199,7 +199,9 @@ async function setupModuleControls(moduleName) { // DEPRECATED
   // 5. Filtros de chips
   setupChipsFilter(moduleName);
   // 6. Contador
-  updateModuleCounterFromData(moduleName);
+  updateModuleCounterFromData(moduleName).catch((err) =>
+    console.error("[modules-controls] updateModuleCounterFromData", err)
+  );
   //setupListCounter(moduleName);
   // 7. Botón de limpiar filtros
   setupBtnClearFilters(moduleName);

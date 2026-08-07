@@ -17,7 +17,12 @@ function initCredentials() {
 }
 
 // Inicializa monedas por defecto si no existen o la lista está vacía
-function initCurrencies() {
+// En layout: settings.repository; en login (index): fallback getData
+async function initCurrencies() {
+  if (typeof ensureCurrenciesDefaults === "function") {
+    await ensureCurrenciesDefaults();
+    return;
+  }
   const list = getData(STG_KEYS.CURRENCIES);
   if (!Array.isArray(list) || list.length === 0) {
     setData(STG_KEYS.CURRENCIES, [...DEFAULT_CURRENCIES]);
@@ -65,7 +70,7 @@ function protectApp() {
 document.addEventListener("DOMContentLoaded", () => {
 
   initCredentials();
-  initCurrencies();
+  void initCurrencies();
 
   // Si existe el formulario de login, asociar evento
   const loginForm = document.getElementById("loginForm");

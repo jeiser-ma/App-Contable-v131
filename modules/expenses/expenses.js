@@ -41,8 +41,8 @@ async function onExpensesPageLoaded() {
 
   // Inicializar el modal después de cargarlo
   initModalModule(MODAL_EXPENSES);
-  // Cargar conceptos de gastos en el select 
-  loadExpenseConceptsIntoSelect();
+  // Cargar conceptos de gastos en el select
+  await loadExpenseConceptsIntoSelect();
 
 
   // Configurar controles del módulo (buscador, ordenamiento, fecha, botón agregar)
@@ -51,11 +51,15 @@ async function onExpensesPageLoaded() {
   // Configurar botón de confirmar del modal
   const btnConfirm = document.getElementById(BTN_ID_CONFIRM_EXPENSE);
   if (btnConfirm) {
-    btnConfirm.onclick = saveExpenseFromModal;
+    btnConfirm.onclick = () => {
+      saveExpenseFromModal().catch((err) =>
+        console.error("[expenses] saveExpenseFromModal", err)
+      );
+    };
   }
 
   // Renderizar la lista de gastos
-  renderExpenses();
+  await renderExpenses();
 }
 
 
@@ -156,9 +160,9 @@ function clearExpenseModalErrors() {
 
 /**
  * Guarda un gasto desde el modal (crear o editar)
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveExpenseFromModal() {
+async function saveExpenseFromModal() {
   // Obtener los valores de los inputs
   const concept = getInputValue(ID_EXPENSE_CONCEPT).trim();
   const amount = parseFloat(getInputValue(ID_EXPENSE_AMOUNT));
@@ -189,46 +193,44 @@ function saveExpenseFromModal() {
   // de lo contrario, crear un nuevo gasto
   if (EXPENSES_STATE.elementToEdit) {
     // Editar
-    const expenseToEdit = getDataById(PAGE_EXPENSES, EXPENSES_STATE.elementToEdit);
-    if (!expenseToEdit) {
+    const expenseToEdit = await getExpenseById(EXPENSES_STATE.elementToEdit);
+    if (!expenseToEdit?.id) {
       setInputError(ID_EXPENSE_CONCEPT, "El gasto no existe");
       return;
     }
-    const updatedExpense = {
+    await saveExpense({
       ...expenseToEdit,
       concept,
       amount: amountRounded,
       date,
       note,
-    };
-    setDataById(PAGE_EXPENSES, updatedExpense);
+    });
   } else {
     // Crear
-    const newExpense = {
-      id: crypto.randomUUID(),
-      concept,
-      amount: amountRounded,
-      date,
-      note,
-      createdAt: new Date().toISOString(),
-    };
-    setDataById(PAGE_EXPENSES, newExpense);
+    await saveExpense(
+      createExpense({
+        concept,
+        amount: amountRounded,
+        date,
+        note,
+      })
+    );
   }
 
   // Cerrar el modal
   hideModalModules();
   // Renderizar la lista de gastos
-  renderExpenses();
+  await renderExpenses();
 }
 
 /**
  * Abre el modal para editar un gasto existente
  * @param {string} id - ID del gasto a editar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openEditExpenseModal(id) {
-  const expense = getDataById(PAGE_EXPENSES, id);
-  if (!expense) return;
+async function openEditExpenseModal(id) {
+  const expense = await getExpenseById(id);
+  if (!expense?.id) return;
 
   EXPENSES_STATE.elementToEdit = id;
 
@@ -253,9 +255,9 @@ function openEditExpenseModal(id) {
 
 /**
  * Carga los conceptos de gastos en el select del modal
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function loadExpenseConceptsIntoSelect() {
+async function loadExpenseConceptsIntoSelect() {
   const select = document.getElementById(ID_EXPENSE_CONCEPT);
   if (!select) return;
 
@@ -273,11 +275,11 @@ function loadExpenseConceptsIntoSelect() {
     select.appendChild(defaultOption);
   }
 
-  // Obtener conceptos de gastos
-  const concepts = getExpenseConcepts();
+  // Obtener conceptos de gastos (settings.repository)
+  const concepts = await getExpenseConcepts();
 
   // Agregar opciones
-  concepts.forEach(concept => {
+  concepts.forEach((concept) => {
     const option = document.createElement("option");
     option.value = concept;
     option.textContent = concept;
@@ -288,12 +290,11 @@ function loadExpenseConceptsIntoSelect() {
 /**
  * Abre el modal de confirmación para eliminar un gasto
  * @param {string} id - ID del gasto a eliminar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openDeleteExpenseModal(id) {
-  const expenses = getData(PAGE_EXPENSES) || [];
-  const expense = expenses.find((e) => e.id === id);
-  if (!expense) return;
+async function openDeleteExpenseModal(id) {
+  const expense = await getExpenseById(id);
+  if (!expense?.id) return;
 
   DELETE_STATE.type = "expense";
   DELETE_STATE.id = id;
@@ -303,28 +304,26 @@ function openDeleteExpenseModal(id) {
 
 /**
  * Confirma la eliminación de un gasto
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteExpense() {
+async function confirmDeleteExpense() {
   if (!DELETE_STATE.id) return;
 
-  const expenses = getData(PAGE_EXPENSES) || [];
-  const deleted = expenses.find((e) => e.id === DELETE_STATE.id);
-  if (!deleted) return;
+  const deleted = await getExpenseById(DELETE_STATE.id);
+  if (!deleted?.id) return;
 
   // Guardar estado para undo
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = STG_KEYS.EXPENSES;
 
-  const updated = expenses.filter((e) => e.id !== DELETE_STATE.id);
-  setData(PAGE_EXPENSES, updated);
+  await deleteExpense(DELETE_STATE.id);
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
 
   // Cerrar modal de confirmación reutilizable
   hideConfirmModal();
-  renderExpenses();
+  await renderExpenses();
   showSnackbar("Gasto eliminado");
 }
 
@@ -428,8 +427,20 @@ function renderExpensesList(expenses) {
 
     const btnEdit = node.querySelector(".btn-edit-expense");
     const btnDelete = node.querySelector(".btn-delete-expense");
-    if (btnEdit) btnEdit.onclick = () => openEditExpenseModal(e.id);
-    if (btnDelete) btnDelete.onclick = () => openDeleteExpenseModal(e.id);
+    if (btnEdit) {
+      btnEdit.onclick = () => {
+        openEditExpenseModal(e.id).catch((err) =>
+          console.error("[expenses] openEditExpenseModal", err)
+        );
+      };
+    }
+    if (btnDelete) {
+      btnDelete.onclick = () => {
+        openDeleteExpenseModal(e.id).catch((err) =>
+          console.error("[expenses] openDeleteExpenseModal", err)
+        );
+      };
+    }
 
     list.appendChild(node);
   });
@@ -438,10 +449,10 @@ function renderExpensesList(expenses) {
 /**
  * Función principal que renderiza los gastos
  * Filtra, ordena y renderiza usando EXPENSES_STATE
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderExpenses() {
-  const allExpenses = getData(PAGE_EXPENSES) || [];
+async function renderExpenses() {
+  const allExpenses = await getAllExpenses();
 
   const filtered = filterExpenses(allExpenses);
   const sorted = sortExpenses(filtered);

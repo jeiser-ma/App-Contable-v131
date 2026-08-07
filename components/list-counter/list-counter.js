@@ -22,9 +22,9 @@ function updateListCounter(current, total, moduleName) {
 
 /**
  * Actualiza el contador del módulo desde los datos
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function updateModuleCounterFromData() {
+async function updateModuleCounterFromData() {
   if (!currentModule) return;
   const config = MODULES_CONFIG[currentModule];
   if (!config) return;
@@ -37,13 +37,21 @@ function updateModuleCounterFromData() {
   if (currentModule === PAGE_PRODUCTS) {
     data = CACHE.products || [];
   } else if (currentModule === PAGE_MOVEMENTS) {
-    data = getData(PAGE_MOVEMENTS) || [];
+    data = isCacheLoaded(STG_KEYS.MOVEMENTS)
+      ? (CACHE.movements || [])
+      : await getAllMovements();
   } else if (currentModule === PAGE_INVENTORY) {
-    data = getData(PAGE_INVENTORY) || [];
+    data = isCacheLoaded(STG_KEYS.INVENTORY)
+      ? (CACHE.inventory || [])
+      : await getAllInventory();
   } else if (currentModule === PAGE_EXPENSES) {
-    data = getData(PAGE_EXPENSES) || [];
+    data = isCacheLoaded(STG_KEYS.EXPENSES)
+      ? (CACHE.expenses || [])
+      : await getAllExpenses();
   } else if (currentModule === PAGE_STORES) {
-    data = getData(PAGE_STORES) || [];
+    data = isCacheLoaded(STG_KEYS.STORES)
+      ? (CACHE.stores || [])
+      : await getAllStores();
   }
 
   // Por ahora mostrar total, luego se actualizará con el render

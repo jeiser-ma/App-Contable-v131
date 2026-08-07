@@ -69,7 +69,13 @@ async function onFinancesPageLoaded() {
   await setupFinancesControls();
 
   const btnConfirm = document.getElementById(ID_BTN_CONFIRM_FINANCE_AMOUNT);
-  if (btnConfirm) btnConfirm.onclick = saveFinanceAmountFromModal;
+  if (btnConfirm) {
+    btnConfirm.onclick = () => {
+      saveFinanceAmountFromModal().catch((err) =>
+        console.error("[finances] saveFinanceAmountFromModal", err)
+      );
+    };
+  }
 
   const btnExport = document.getElementById(ID_BTN_EXPORT_FINANCES);
   if (btnExport) btnExport.onclick = exportCurrentFinanceToCsv;
@@ -125,14 +131,15 @@ function normalizeFinanceCurrencyKey(key) {
 }
 
 /**
- * @returns {string[]}
+ * @returns {Promise<string[]>}
  */
-function getFinanceCurrencies() {
-  let list;
+async function getFinanceCurrencies() {
+  let list = [];
   if (typeof getCurrencies === "function") {
-    list = getCurrencies();
+    list = await getCurrencies();
   } else {
-    list = getData(STG_KEYS.CURRENCIES);
+    list =
+      typeof DEFAULT_CURRENCIES !== "undefined" ? [...DEFAULT_CURRENCIES] : ["CUP", "USD"];
   }
   if (!Array.isArray(list) || list.length === 0) {
     list =
@@ -146,10 +153,10 @@ function getFinanceCurrencies() {
 /**
  * Monedas a mostrar: catálogo + extras con monto ≠ 0 en el día
  * @param {Object} [finance]
- * @returns {string[]}
+ * @returns {Promise<string[]>}
  */
-function getFinanceDisplayCurrencies(finance = currentFinance) {
-  const catalog = getFinanceCurrencies();
+async function getFinanceDisplayCurrencies(finance = currentFinance) {
+  const catalog = await getFinanceCurrencies();
   const extras = new Set();
   if (finance) {
     collectNonZeroCurrencyKeys(finance.dailyTotals, extras);
@@ -157,12 +164,20 @@ function getFinanceDisplayCurrencies(finance = currentFinance) {
     (finance.stores || []).forEach((s) =>
       collectNonZeroCurrencyKeys(s.amounts, extras)
     );
-    collectFlowListCurrencies(finance.inputs, extras);
-    collectFlowListCurrencies(finance.outputs, extras);
+    (Array.isArray(finance.inputs) ? finance.inputs : []).forEach((item) => {
+      if (Number(item?.amount || 0) !== 0 && item?.currency) {
+        extras.add(normalizeFinanceCurrencyKey(item.currency));
+      }
+    });
+    (Array.isArray(finance.outputs) ? finance.outputs : []).forEach((item) => {
+      if (Number(item?.amount || 0) !== 0 && item?.currency) {
+        extras.add(normalizeFinanceCurrencyKey(item.currency));
+      }
+    });
   }
   const merged = [...catalog];
   extras.forEach((code) => {
-    if (!merged.includes(code)) merged.push(code);
+    if (code && !merged.includes(code)) merged.push(code);
   });
   return merged;
 }
@@ -367,19 +382,29 @@ function hasNonZeroAmounts(amounts) {
 //#region Load / save / totals
 
 /**
+ * Catálogo de PV: caché si está cargada, si no repositorio.
+ * @returns {Promise<Object[]>}
+ */
+async function getStoresCatalog() {
+  return isCacheLoaded(STG_KEYS.STORES)
+    ? (CACHE.stores || [])
+    : await getAllStores();
+}
+
+/**
  * @returns {Promise<void>}
  */
 async function renderFinances() {
   await loadFinance();
   if (!currentFinance) return;
 
-  recalculateFinanceTotals();
-  saveFinance();
+  await recalculateFinanceTotals();
+  await persistCurrentFinance();
 
-  renderFinanceStoresSection();
+  await renderFinanceStoresSection();
   renderFinanceFlowSection(FINANCE_TARGET_INPUTS);
   renderFinanceFlowSection(FINANCE_TARGET_OUTPUTS);
-  renderFinanceTotalsSections();
+  await renderFinanceTotalsSections();
 }
 
 /**
@@ -387,27 +412,26 @@ async function renderFinances() {
  */
 async function loadFinance() {
   const date = FINANCES_STATE.filterDate || getToday();
-  const all = getData(PAGE_FINANCES) || [];
-  currentFinance = all.find((f) => f.date === date) || null;
+  currentFinance = await getFinanceByDate(date);
 
   if (!currentFinance) {
-    currentFinance = createNewFinance(date);
-    saveFinance();
+    currentFinance = await createNewFinance(date);
+    await persistCurrentFinance();
   } else {
     migrateFinanceRecord(currentFinance);
-    syncFinanceStores(currentFinance);
+    await syncFinanceStores(currentFinance);
   }
 }
 
 /**
  * @param {string} date
- * @returns {Object}
+ * @returns {Promise<Object>}
  */
-function createNewFinance(date) {
+async function createNewFinance(date) {
   return {
     id: crypto.randomUUID(),
     date,
-    stores: buildFinanceStoresFromCatalog(),
+    stores: await buildFinanceStoresFromCatalog(),
     inputs: [],
     outputs: [],
     dailyTotals: {},
@@ -431,10 +455,10 @@ function emptyStoreAmounts() {
 }
 
 /**
- * @returns {Array}
+ * @returns {Promise<Array>}
  */
-function buildFinanceStoresFromCatalog() {
-  const catalog = getData(PAGE_STORES) || [];
+async function buildFinanceStoresFromCatalog() {
+  const catalog = await getStoresCatalog();
   return catalog
     .filter((s) => s.active !== false)
     .map((s) => ({
@@ -445,10 +469,10 @@ function buildFinanceStoresFromCatalog() {
 
 /**
  * @param {Object} finance
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function syncFinanceStores(finance) {
-  const catalog = getData(PAGE_STORES) || [];
+async function syncFinanceStores(finance) {
+  const catalog = await getStoresCatalog();
   const active = catalog.filter((s) => s.active !== false);
   const byId = new Map((finance.stores || []).map((s) => [s.storeId, s]));
 
@@ -500,13 +524,14 @@ function migrateFinanceRecord(finance) {
 }
 
 /**
- * @returns {void}
+ * Persiste finanzas del día vía repositorio y recalcula totales generales futuros.
+ * @returns {Promise<void>}
  */
-function saveFinance() {
+async function persistCurrentFinance() {
   if (!currentFinance) return;
   pruneFinanceRecord(currentFinance);
-  setDataById(PAGE_FINANCES, currentFinance);
-  refreshFutureGeneralTotals(currentFinance.date);
+  await saveFinance(currentFinance);
+  await refreshFutureGeneralTotals(currentFinance.date);
 }
 
 /**
@@ -532,10 +557,12 @@ function addCurrencyTotals(a, b) {
  * @param {string} fromDate
  * @returns {void}
  */
-function refreshFutureGeneralTotals(fromDate) {
+async function refreshFutureGeneralTotals(fromDate) {
   if (!fromDate) return;
 
-  const all = getData(PAGE_FINANCES) || [];
+  const all = isCacheLoaded(STG_KEYS.FINANCES)
+    ? (CACHE.finances || [])
+    : await getAllFinances();
   const future = all
     .filter((f) => f.date > fromDate)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -548,29 +575,29 @@ function refreshFutureGeneralTotals(fromDate) {
       : all.find((f) => f.date === fromDate)?.generalTotals;
   prevGeneral = pruneCurrencyMap(prevGeneral, { allowNegative: true });
 
-  future.forEach((finance) => {
+  for (const finance of future) {
     migrateFinanceRecord(finance);
     const daily = finance.dailyTotals || emptyCurrencyTotals();
     finance.generalTotals = addCurrencyTotals(prevGeneral, daily);
     pruneFinanceRecord(finance);
-    setDataById(PAGE_FINANCES, finance);
+    await saveFinance(finance);
     prevGeneral = finance.generalTotals;
 
     if (currentFinance?.id === finance.id) {
       currentFinance.generalTotals = finance.generalTotals;
     }
-  });
+  }
 }
 
 /**
  * TotalHoy = Σ PV + Σ Entradas − Σ Salidas
  * TotalGeneralHoy = TotalHoy + TotalGeneralAyer
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function recalculateFinanceTotals() {
+async function recalculateFinanceTotals() {
   if (!currentFinance) return;
 
-  const currencies = getFinanceDisplayCurrencies(currentFinance);
+  const currencies = await getFinanceDisplayCurrencies(currentFinance);
   const daily = {};
 
   currencies.forEach((code) => {
@@ -586,7 +613,9 @@ function recalculateFinanceTotals() {
 
   currentFinance.dailyTotals = daily;
 
-  const all = getData(PAGE_FINANCES) || [];
+  const all = isCacheLoaded(STG_KEYS.FINANCES)
+    ? (CACHE.finances || [])
+    : await getAllFinances();
   const previousFinance = all
     .filter((f) => f.date < currentFinance.date)
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -610,17 +639,17 @@ function recalculateFinanceTotals() {
 //#region Render UI
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderFinanceStoresSection() {
+async function renderFinanceStoresSection() {
   const list = document.getElementById(ID_FINANCE_STORES_LIST);
   const template = document.getElementById(ID_FINANCE_STORE_CARD_TEMPLATE);
   const alertNoStores = document.getElementById(ID_ALERT_NO_STORES);
   if (!list || !template || !currentFinance) return;
 
-  const catalog = getData(PAGE_STORES) || [];
+  const catalog = await getStoresCatalog();
   const byId = new Map(catalog.map((s) => [s.id, s]));
-  const currencies = getFinanceDisplayCurrencies(currentFinance);
+  const currencies = await getFinanceDisplayCurrencies(currentFinance);
 
   let entries = (currentFinance.stores || []).filter((entry) => {
     const store = byId.get(entry.storeId);
@@ -828,13 +857,13 @@ function buildFinanceFlowRow(item, target, toneClass) {
 }
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderFinanceTotalsSections() {
+async function renderFinanceTotalsSections() {
   if (!currentFinance) return;
   const d = currentFinance.dailyTotals || emptyCurrencyTotals();
   const g = currentFinance.generalTotals || emptyCurrencyTotals();
-  const currencies = getFinanceDisplayCurrencies(currentFinance);
+  const currencies = await getFinanceDisplayCurrencies(currentFinance);
 
   fillFinanceTotalsList(ID_FINANCE_DAILY_LIST, d, currencies);
   fillFinanceTotalsList(ID_FINANCE_GENERAL_LIST, g, currencies);
@@ -880,9 +909,9 @@ function fillFinanceTotalsList(containerId, totals, currencies) {
 /**
  * @param {"store"|"inputs"|"outputs"} target
  * @param {string} [editId]
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openFinanceAmountModal(target, editId = null) {
+async function openFinanceAmountModal(target, editId = null) {
   if (!currentFinance) return;
 
   FINANCES_STATE.amountTarget = target;
@@ -939,13 +968,13 @@ function openFinanceAmountModal(target, editId = null) {
     }
   }
 
-  fillFinanceCurrencySelect();
+  await fillFinanceCurrencySelect();
   setInputValue(ID_FINANCE_AMOUNT_CURRENCY, "");
   setInputValue(ID_FINANCE_AMOUNT_INPUT, "");
   setInputValue(ID_FINANCE_AMOUNT_NOTE, "");
 
   if (isStore) {
-    fillFinanceStoreSelect();
+    await fillFinanceStoreSelect();
   } else if (editId) {
     const list = isInputs ? currentFinance.inputs : currentFinance.outputs;
     const item = (list || []).find((x) => x.id === editId);
@@ -969,9 +998,9 @@ function openFinanceAmountModal(target, editId = null) {
 }
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function fillFinanceCurrencySelect() {
+async function fillFinanceCurrencySelect() {
   const select = document.getElementById(ID_FINANCE_AMOUNT_CURRENCY);
   if (!select) return;
 
@@ -984,22 +1013,23 @@ function fillFinanceCurrencySelect() {
   placeholder.selected = true;
   select.appendChild(placeholder);
 
-  getFinanceCurrencies().forEach((code) => {
+  const codes = await getFinanceCurrencies();
+  codes.forEach((code) => {
     const option = document.createElement("option");
     option.value = code;
     option.textContent = code;
     select.appendChild(option);
   });
 
-  if (previous && getFinanceCurrencies().includes(previous)) {
+  if (previous && codes.includes(previous)) {
     select.value = previous;
   }
 }
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function fillFinanceStoreSelect() {
+async function fillFinanceStoreSelect() {
   const select = document.getElementById(ID_FINANCE_AMOUNT_STORE);
   if (!select) return;
 
@@ -1011,7 +1041,7 @@ function fillFinanceStoreSelect() {
   placeholder.selected = true;
   select.appendChild(placeholder);
 
-  const catalog = getData(PAGE_STORES) || [];
+  const catalog = await getStoresCatalog();
   const byId = new Map(catalog.map((s) => [s.id, s]));
   const financeStoreIds = new Set(
     (currentFinance?.stores || []).map((s) => s.storeId)
@@ -1080,9 +1110,9 @@ function clearFinanceAmountModalErrors() {
 }
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveFinanceAmountFromModal() {
+async function saveFinanceAmountFromModal() {
   if (!currentFinance) return;
 
   clearFinanceAmountModalErrors();
@@ -1106,7 +1136,8 @@ function saveFinanceAmountFromModal() {
     return;
   }
 
-  const allowed = getFinanceCurrencies().map(normalizeFinanceCurrencyKey);
+  const catalog = await getFinanceCurrencies();
+  const allowed = catalog.map(normalizeFinanceCurrencyKey);
   if (!allowed.includes(currency)) {
     setInputError(ID_FINANCE_AMOUNT_CURRENCY, "Moneda no válida");
     return;
@@ -1165,19 +1196,19 @@ function saveFinanceAmountFromModal() {
   }
 
   FINANCES_STATE.elementToEdit = null;
-  recalculateFinanceTotals();
-  saveFinance();
+  await recalculateFinanceTotals();
+  await persistCurrentFinance();
   hideModalModules();
-  renderFinances();
+  await renderFinances();
 }
 
 /**
  * Elimina una entrada o salida (con undo vía snackbar)
  * @param {"inputs"|"outputs"} target
  * @param {string} itemId
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function deleteFinanceFlowItem(target, itemId) {
+async function deleteFinanceFlowItem(target, itemId) {
   if (!currentFinance || !itemId) return;
   const listKey = target === FINANCE_TARGET_INPUTS ? "inputs" : "outputs";
   const list = currentFinance[listKey] || [];
@@ -1196,9 +1227,9 @@ function deleteFinanceFlowItem(target, itemId) {
   }
 
   currentFinance[listKey] = list.filter((x) => x.id !== itemId);
-  recalculateFinanceTotals();
-  saveFinance();
-  renderFinances();
+  await recalculateFinanceTotals();
+  await persistCurrentFinance();
+  await renderFinances();
 
   if (typeof showSnackbar === "function") {
     showSnackbar(
@@ -1212,9 +1243,9 @@ function deleteFinanceFlowItem(target, itemId) {
  * @param {"finance-inputs"|"finance-outputs"} undoType
  * @param {Object} item
  * @param {number} [index]
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function undoFinanceFlowDelete(undoType, item, index) {
+async function undoFinanceFlowDelete(undoType, item, index) {
   if (!currentFinance || !item) return;
   const listKey =
     undoType === FINANCE_UNDO_INPUTS ? "inputs" : "outputs";
@@ -1228,23 +1259,23 @@ function undoFinanceFlowDelete(undoType, item, index) {
       : currentFinance[listKey].length;
 
   currentFinance[listKey].splice(insertAt, 0, item);
-  recalculateFinanceTotals();
-  saveFinance();
-  renderFinances();
+  await recalculateFinanceTotals();
+  await persistCurrentFinance();
+  await renderFinances();
 }
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function exportCurrentFinanceToCsv() {
+async function exportCurrentFinanceToCsv() {
   if (!currentFinance) {
     showToast("No hay finanzas cargadas para exportar.", TOAST_COLORS.DANGER, 3);
     return;
   }
 
-  const storesCatalog = getData(PAGE_STORES) || [];
-  const currencies = getFinanceDisplayCurrencies(currentFinance);
-  const ok = exportFinancesToCsv(currentFinance, storesCatalog, currencies);
+  const storesCatalog = await getStoresCatalog();
+  const currencies = await getFinanceDisplayCurrencies(currentFinance);
+  const ok = await exportFinancesToCsv(currentFinance, storesCatalog, currencies);
   if (ok) {
     showToast("Finanzas exportadas correctamente.", TOAST_COLORS.SUCCESS, 3);
   }

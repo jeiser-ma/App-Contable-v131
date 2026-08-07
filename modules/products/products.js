@@ -74,8 +74,8 @@ window.PRODUCTS_STATE = PRODUCTS_STATE;
  * Migra productos con code (string) a codes (array).
  * Se ejecuta al cargar la página de productos.
  */
-function migrateProductsToCodes() {
-  const products = getData(PAGE_PRODUCTS) || [];
+async function migrateProductsToCodes() {
+  const products = await getAllProducts();
   let changed = false;
   const migrated = products.map((p) => {
     if (Array.isArray(p.codes)) return p;
@@ -89,7 +89,7 @@ function migrateProductsToCodes() {
     return { ...rest, codes: [] };
   });
   if (changed) {
-    setData(PAGE_PRODUCTS, migrated);
+    await saveAllProducts(migrated);
     replaceProductsCache(migrated);
   }
 }
@@ -104,7 +104,7 @@ function migrateProductsToCodes() {
  * y configura los event listeners de los botones
  */
 async function onProductsPageLoaded() {
-  migrateProductsToCodes();
+  await migrateProductsToCodes();
   loadProductsCache();
 
   // Cargar modal de productos
@@ -121,7 +121,11 @@ async function onProductsPageLoaded() {
   await setupProductsControls();
 
   // Configurar botón de guardar del modal
-  document.getElementById(BTN_ID_SAVE_PRODUCT).onclick = saveProductFromModal;
+  document.getElementById(BTN_ID_SAVE_PRODUCT).onclick = () => {
+    saveProductFromModal().catch((err) =>
+      console.error("[products] saveProductFromModal", err)
+    );
+  };
 
   // Renderizar la lista de productos
   renderProducts();
@@ -265,8 +269,9 @@ async function setupProductsControls() {
  * Abre el modal para agregar un nuevo producto
  * Resetea el formulario y configura el título del modal
  * @param {string} [initialCode] - Código opcional (ej. escaneado) para pre-cargar
+ * @returns {Promise<void>}
  */
-function openAddProductModal(initialCode) {
+async function openAddProductModal(initialCode) {
   // Resetear el estado de edición porque es un nuevo producto y no hay producto para editar
   PRODUCTS_STATE.elementToEdit = null;
 
@@ -289,7 +294,7 @@ function openAddProductModal(initialCode) {
   // Establecer el valor del input de umbral de stock crítico
   setInputValue(ID_INPUT_CRITICAL_STOCK_THRESHOLD, "");
   // Cargar unidades de medida en el select y seleccionar la del producto
-  loadUnitsIntoSelect();
+  await loadUnitsIntoSelect();
 
   // Mostrar modal
   toggleModalModules();
@@ -299,8 +304,9 @@ function openAddProductModal(initialCode) {
  * Abre el modal para editar un producto existente
  * Carga los datos del producto en el formulario y muestra el modal
  * @param {string} id - ID del producto a editar
+ * @returns {Promise<void>}
  */
-function openEditProductModal(id) {
+async function openEditProductModal(id) {
   // Obtener el producto a editar
   const product = getProductFromCache(id);
   if (!product) return;
@@ -327,7 +333,7 @@ function openEditProductModal(id) {
   // Establecer el valor del input de umbral de stock crítico
   setInputValue(ID_INPUT_CRITICAL_STOCK_THRESHOLD, product.criticalStockThreshold || "");
   // Cargar unidades de medida en el select y seleccionar la del producto
-  loadUnitsIntoSelect();
+  await loadUnitsIntoSelect();
   // Establecer el valor del input de unidad de medida
   setInputValue(ID_INPUT_UM, product.um);
 
@@ -337,9 +343,9 @@ function openEditProductModal(id) {
 
 /**
  * Carga las unidades de medida en el select del modal de productos
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function loadUnitsIntoSelect() {
+async function loadUnitsIntoSelect() {
   const select = document.getElementById(ID_INPUT_UM);
   if (!select) return;
 
@@ -357,8 +363,8 @@ function loadUnitsIntoSelect() {
     select.appendChild(defaultOption);
   }
 
-  // Obtener unidades de medida
-  const units = getUnits();
+  // Obtener unidades de medida (settings.repository)
+  const units = await getUnits();
 
   // Agregar opciones
   units.forEach((unit) => {
@@ -608,9 +614,16 @@ function renderProductsList(products) {
       • <i class="bi bi-beaker small"></i> ${p.um}`;
     }
 
-    node.querySelector(".btn-edit").onclick = () => openEditProductModal(p.id);
-    node.querySelector(".btn-delete").onclick = () =>
-      openDeleteProductModal(p.id);
+    node.querySelector(".btn-edit").onclick = () => {
+      openEditProductModal(p.id).catch((err) =>
+        console.error("[products] openEditProductModal", err)
+      );
+    };
+    node.querySelector(".btn-delete").onclick = () => {
+      openDeleteProductModal(p.id).catch((err) =>
+        console.error("[products] openDeleteProductModal", err)
+      );
+    };
 
     prodList.appendChild(node);
   });
@@ -634,9 +647,9 @@ function renderProducts() {
 
 /**
  * Guarda el producto desde el modal
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function saveProductFromModal() {
+async function saveProductFromModal() {
   // Obtener los valores de los inputs
   const id = getInputValue(ID_PRODUCT_ID);
   const codesRaw = [...productModalCodes];
@@ -692,8 +705,9 @@ function saveProductFromModal() {
   // Si hay un id de producto es una edición si no, es un alta de producto
   if (id) {
     // EDITAR
-    const productToEdit = getProductFromCache(id);
-    if (!productToEdit) {
+    const productToEdit =
+      getProductFromCache(id) || (await getProductById(id));
+    if (!productToEdit?.id) {
       setInputError(ID_PRODUCT_ID, "El producto no existe");
       return;
     }
@@ -706,22 +720,21 @@ function saveProductFromModal() {
       lowStockThreshold,
       criticalStockThreshold,
     };
-    setDataById(PAGE_PRODUCTS, updatedProduct);
+    await saveProduct(updatedProduct);
     syncProductInCache(updatedProduct);
 
   } else {
     // ALTA
-    const newProduct = {
-      id: crypto.randomUUID(),
+    const newProduct = createProduct({
       codes: codesRaw,
       name,
       price: priceRounded,
       um,
       quantity: 0,
       lowStockThreshold,
-      criticalStockThreshold
-    };
-    setDataById(PAGE_PRODUCTS, newProduct);
+      criticalStockThreshold,
+    });
+    await saveProduct(newProduct);
     syncProductInCache(newProduct);
   }
 
@@ -740,15 +753,15 @@ function saveProductFromModal() {
  * Indica si un producto está vinculado a movimientos, inventarios (CONFIRMED/CLOSED) o contabilidades cerradas.
  * No se debe eliminar un producto vinculado.
  * @param {string} prodId - ID del producto
- * @returns {boolean} true si está vinculado, false en caso contrario
+ * @returns {Promise<boolean>} true si está vinculado, false en caso contrario
  */
-function isProductLinked(prodId) {
+async function isProductLinked(prodId) {
   if (!prodId) return false;
 
-  const movements = getData(PAGE_MOVEMENTS) || [];
+  const movements = await getAllMovements();
   if (movements.some((m) => m.productId === prodId)) return true;
 
-  const inventory = getData(PAGE_INVENTORY) || [];
+  const inventory = await getAllInventory();
   if (
     inventory.some(
       (inv) =>
@@ -759,7 +772,7 @@ function isProductLinked(prodId) {
     return true;
   }
 
-  const accounting = getData(PAGE_ACCOUNTING) || [];
+  const accounting = await getAllAccounting();
   if (
     accounting.some(
       (acc) =>
@@ -777,16 +790,16 @@ function isProductLinked(prodId) {
  * Actualiza la cantidad de un producto sumando (o restando) un valor a la cantidad actual.
  * @param {string} productId - ID del producto
  * @param {number} quantityDelta - Cantidad a sumar (positivo = aumentar, negativo = disminuir)
- * @returns {number|undefined} Nueva cantidad del producto, 
+ * @returns {Promise<number|undefined>} Nueva cantidad del producto, 
  * o undefined si el producto no existe, 
  * o -1 si la nueva cantidad es negativa (error)
  */
-function updateProductQuantity(productId, quantityDelta) {
+async function updateProductQuantity(productId, quantityDelta) {
   if (!productId) return undefined; // Error: ID de producto no válido
 
   const product =
-    getProductFromCache(productId) || getDataById(PAGE_PRODUCTS, productId);
-  if (!product) return undefined; // Error: producto no encontrado
+    getProductFromCache(productId) || (await getProductById(productId));
+  if (!product?.id) return undefined; // Error: producto no encontrado
 
   const currentQuantity = product.quantity ?? 0;
   const newQuantity = roundTo2(currentQuantity + quantityDelta);
@@ -795,22 +808,22 @@ function updateProductQuantity(productId, quantityDelta) {
   if (newQuantity < 0) return -1; // Error: cantidad negativa
 
   // Actualizar la cantidad del producto
-  product.quantity = newQuantity;
-  setDataById(PAGE_PRODUCTS, product);
-  syncProductInCache(product);
+  const updatedProduct = { ...product, quantity: newQuantity };
+  await saveProduct(updatedProduct);
+  syncProductInCache(updatedProduct);
   return newQuantity;
 }
 
 /**
  * Abre el modal para eliminar un producto
  * @param {string} id - ID del producto a eliminar
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function openDeleteProductModal(id) {
+async function openDeleteProductModal(id) {
   const product = getProductFromCache(id);
   if (!product) return;
 
-  if (isProductLinked(id)) {
+  if (await isProductLinked(id)) {
     showToast(
       "No se puede eliminar: el producto tiene elementos vinculados", 
       TOAST_COLORS.DANGER,3
@@ -825,13 +838,13 @@ function openDeleteProductModal(id) {
 /**
  * Confirma la eliminación de un producto
  * Elimina el producto de la lista y renderiza los productos
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function confirmDeleteProduct() {
+async function confirmDeleteProduct() {
   if (!PRODUCTS_STATE.elementToDelete) return;
 
   const idToDel = PRODUCTS_STATE.elementToDelete;
-  if (isProductLinked(idToDel)) {
+  if (await isProductLinked(idToDel)) {
     showToast(
       "No se puede eliminar: el producto tiene elementos vinculados",
       TOAST_COLORS.DANGER,3
@@ -843,16 +856,17 @@ function confirmDeleteProduct() {
     return;
   }
 
-  const products = getData(PAGE_PRODUCTS);
-  const deleted = products.find((p) => p.id === idToDel);
+  const deleted = await getProductById(idToDel);
+  if (!deleted?.id) return;
 
   // Guardamos estado undo
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = PAGE_PRODUCTS; // Nombre de la colección en storage
 
-  const updated = products.filter((p) => p.id !== idToDel);
-  setData(PAGE_PRODUCTS, updated);
-  replaceProductsCache(updated);
+  await deleteProduct(idToDel);
+  if (typeof removeProductFromCache === "function") {
+    removeProductFromCache(idToDel);
+  }
 
   PRODUCTS_STATE.elementToDelete = null;
   DELETE_STATE.type = null;
