@@ -135,7 +135,7 @@ function getStoreStatusFromModal() {
  * Guarda un punto de venta desde el modal (crear o editar)
  * @returns {void}
  */
-function saveStoreFromModal() {
+async function saveStoreFromModal() {
   const name = getInputValue(ID_STORE_NAME).trim();
   const active = getStoreStatusFromModal();
 
@@ -144,36 +144,42 @@ function saveStoreFromModal() {
     return;
   }
 
-  const allStores = getData(PAGE_STORES) || [];
+  //const allStores = getData(PAGE_STORES) || [];
+  const allStores = await getAllStores();
+  console.log(allStores);
   const nameExists = allStores.some(
     (s) =>
-      s.name.toLowerCase() === name.toLowerCase() &&
-      s.id !== STORES_STATE.elementToEdit
+      s.name.toLowerCase() === name.toLowerCase()
+      && s.id !== STORES_STATE.elementToEdit
   );
   if (nameExists) {
     setInputError(ID_STORE_NAME, "Ya existe un punto de venta con ese nombre");
     return;
   }
 
-  if (STORES_STATE.elementToEdit) {
-    const storeToEdit = getDataById(PAGE_STORES, STORES_STATE.elementToEdit);
-    if (!storeToEdit) {
-      setInputError(ID_STORE_NAME, "El punto de venta no existe");
-      return;
-    }
-    setDataById(PAGE_STORES, {
-      ...storeToEdit,
-      name,
-      active,
-    });
-  } else {
-    setDataById(PAGE_STORES, {
-      id: crypto.randomUUID(),
-      name,
-      active,
-      createdAt: new Date().toISOString(),
-    });
-  }
+  // if (STORES_STATE.elementToEdit) {
+  //   //const storeToEdit = getDataById(PAGE_STORES, STORES_STATE.elementToEdit);
+  //   const storeToEdit = await getStoreById(STORES_STATE.elementToEdit);
+  //   if (!storeToEdit) {
+  //     setInputError(ID_STORE_NAME, "El punto de venta no existe");
+  //     return;
+  //   }
+  //   // setDataById(PAGE_STORES, {
+  //   //   ...storeToEdit,
+  //   //   name,
+  //   //   active,
+  //   // });
+  //   saveStore(createStore({...storeToEdit, name, active,}));
+  // } else {
+  //   setDataById(PAGE_STORES, {
+  //     id: crypto.randomUUID(),
+  //     name,
+  //     active,
+  //     createdAt: new Date().toISOString(),
+  //   });
+  // }
+  const storeToEdit = await getStoreById(STORES_STATE.elementToEdit);
+  await saveStore(createStore({ ...storeToEdit, name, active, }));
 
   hideModalModules();
   renderStores();
@@ -187,8 +193,9 @@ function saveStoreFromModal() {
  * @param {string} id
  * @returns {void}
  */
-function openDeleteStoreModal(id) {
-  const store = getDataById(PAGE_STORES, id);
+async function openDeleteStoreModal(id) {
+  //const store = getDataById(PAGE_STORES, id);
+  const store = await getStoreById(id);
   if (!store) return;
 
   DELETE_STATE.type = "store";
@@ -200,20 +207,23 @@ function openDeleteStoreModal(id) {
  * Confirma la eliminación de un punto de venta
  * @returns {void}
  */
-function confirmDeleteStore() {
+async function confirmDeleteStore() {
   if (!DELETE_STATE.id) return;
 
-  const stores = getData(PAGE_STORES) || [];
-  const deleted = stores.find((s) => s.id === DELETE_STATE.id);
+  // const stores = getData(PAGE_STORES) || [];
+  // const deleted = stores.find((s) => s.id === DELETE_STATE.id);
+  const deleted = await getStoreById(DELETE_STATE.id);
   if (!deleted) return;
-
+  
   UNDO_STATE.data = deleted;
   UNDO_STATE.type = PAGE_STORES;
 
-  setData(
-    PAGE_STORES,
-    stores.filter((s) => s.id !== DELETE_STATE.id)
-  );
+  // setData(
+  //   PAGE_STORES,
+  //   stores.filter((s) => s.id !== DELETE_STATE.id)
+  // );
+
+  await deleteStore(DELETE_STATE.id)
 
   DELETE_STATE.type = null;
   DELETE_STATE.id = null;
@@ -313,8 +323,10 @@ function renderStoresList(stores) {
  * Filtra, ordena y renderiza los puntos de venta
  * @returns {void}
  */
-function renderStores() {
-  const allStores = getData(PAGE_STORES) || [];
+async function renderStores() {
+  //const allStores = getData(PAGE_STORES) || [];
+  const allStores = await getAllStores();
+  console.log(allStores);
   const filtered = filterStores(allStores);
   const sorted = sortStores(filtered);
 

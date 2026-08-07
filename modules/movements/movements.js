@@ -155,7 +155,7 @@ function handleScanMovementCode() {
   }
   openScannerModal({
     onSuccess: (decodedText) => {
-      const found = CACHE_PRODUCTS.find((p) => (p.codes || []).includes(decodedText));
+      const found = CACHE.products.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
         openAddMovementModal();
         setInputValue(ID_MOVEMENT_PRODUCT, found.name);
@@ -368,7 +368,7 @@ function filterMovements(movements) {
   // Filtro por texto de búsqueda (busca en nombre del producto)
   if (MOVEMENTS_STATE.searchText) {
     filtered = filtered.filter((m) => {
-      const product = CACHE_PRODUCTS.find((p) => p.id === m.productId);
+      const product = CACHE.products.find((p) => p.id === m.productId);
       if (!product) return false;
       return product.name.toLowerCase().includes(MOVEMENTS_STATE.searchText.toLowerCase());
     });
@@ -449,7 +449,7 @@ function renderMovementsList(movements) {
   // Recorrer la lista de movimientos
   movements.forEach((m) => {
     // Obtener el producto
-    const product = CACHE_PRODUCTS.find((p) => p.id === m.productId);
+    const product = CACHE.products.find((p) => p.id === m.productId);
     if (!product) {
       console.error("No se encontró el producto: ", m.productId);
       return; // Si no existe el producto, no mostrar el movimiento
@@ -555,7 +555,7 @@ function saveMovementFromModal() {
   }
 
   // Validar que el producto existe
-  const product = CACHE_PRODUCTS.find(
+  const product = CACHE.products.find(
     (p) => p.name.toLowerCase() === productName.toLowerCase()
   );
   // Si el producto no existe, mostrar error
@@ -746,7 +746,7 @@ function initProductAutocomplete() {
   datalist.id = "productsDatalist";
 
   // Agregar opciones para cada producto
-  CACHE_PRODUCTS.forEach((product) => {
+  CACHE.products.forEach((product) => {
     const option = document.createElement("option");
     option.value = product.name;
     datalist.appendChild(option);

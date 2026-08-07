@@ -25,7 +25,7 @@ function showSnackbar(text) {
   const bar = document.getElementById(ID_SNACKBAR);
   const btnUndo = document.getElementById(ID_BTN_UNDO);
   const btnClose = document.getElementById(ID_SNACKBAR_CLOSE);
-  
+
   if (!bar || !btnUndo || !btnClose) return;
 
   document.getElementById(ID_SNACKBAR_TEXT).textContent = text;
@@ -61,7 +61,7 @@ function clearUndoState() {
 function hideSnackbar() {
   const bar = document.getElementById(ID_SNACKBAR);
   const btnUndo = document.getElementById(ID_BTN_UNDO);
-  
+
   if (bar) {
     bar.classList.add("d-none");
   }
@@ -78,18 +78,18 @@ function hideSnackbar() {
  * Restaura el elemento eliminado según su tipo
  * @returns {void}
  */
-function undoDelete() {
+async function undoDelete() {
   if (!UNDO_STATE.data || !UNDO_STATE.type) return;
 
   // Manejar unidades de medida y conceptos de gastos (tienen índice)
   if (UNDO_STATE.type === STG_KEYS.UNITS || UNDO_STATE.type === STG_KEYS.EXPENSE_CONCEPTS || UNDO_STATE.type === STG_KEYS.CURRENCIES) {
     const data = getData(UNDO_STATE.type);
     const index = UNDO_STATE.index !== undefined ? UNDO_STATE.index : data.length;
-    
+
     // Insertar en la posición original
     data.splice(index, 0, UNDO_STATE.data);
     setData(UNDO_STATE.type, data);
-    
+
     // Renderizar
     if (UNDO_STATE.type === STG_KEYS.UNITS && typeof renderUnits === "function") {
       renderUnits();
@@ -131,9 +131,21 @@ function undoDelete() {
     if (typeof renderProducts === "function") {
       renderProducts();
     }
-  } else {
+  } else if (UNDO_STATE.type === PAGE_STORES) {
+    //const storesAll = getAllStores(UNDO_STATE.type);
+    await saveStore(UNDO_STATE.data);
+    if (typeof renderStores === "function") {
+      renderStores();
+      if (typeof refreshCurrentStoreSelector === "function") {
+        refreshCurrentStoreSelector();
+      }
+    }
+
+  }
+  else {
     // Manejar otros tipos (inventario, gastos, stores, etc.)
     const data = getData(UNDO_STATE.type);
+    //console.log(data);
     data.push(UNDO_STATE.data);
     setData(UNDO_STATE.type, data);
 
@@ -142,12 +154,12 @@ function undoDelete() {
       renderInventory();
     } else if (UNDO_STATE.type === PAGE_EXPENSES && typeof renderExpenses === "function") {
       renderExpenses();
-    } else if (UNDO_STATE.type === PAGE_STORES && typeof renderStores === "function") {
+    } /*else if (UNDO_STATE.type === PAGE_STORES && typeof renderStores === "function") {
       renderStores();
       if (typeof refreshCurrentStoreSelector === "function") {
         refreshCurrentStoreSelector();
       }
-    }
+    }*/
   }
 
   hideSnackbar(); // Esta función ya remueve el listener

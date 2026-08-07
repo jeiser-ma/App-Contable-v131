@@ -35,7 +35,7 @@ function updateModuleCounterFromData() {
   // Obtener datos según el módulo
   let data = [];
   if (currentModule === PAGE_PRODUCTS) {
-    data = CACHE_PRODUCTS || [];
+    data = CACHE.products || [];
   } else if (currentModule === PAGE_MOVEMENTS) {
     data = getData(PAGE_MOVEMENTS) || [];
   } else if (currentModule === PAGE_INVENTORY) {

@@ -156,7 +156,7 @@ function handleScanInventoryCode() {
   }
   openScannerModal({
     onSuccess: (decodedText) => {
-      const found = CACHE_PRODUCTS.find((p) => (p.codes || []).includes(decodedText));
+      const found = CACHE.products.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
         openAddInventoryModal(found.id);
       } else {
@@ -413,7 +413,7 @@ function openDeleteInventoryModal(inventoryId) {
     return;
   }
 
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   const product = products.find((p) => p.id === inv.productId);
   const productName = product ? product.name : "Inventario";
 
@@ -532,7 +532,7 @@ function renderPendingInventoryList(products, allComplete = false) {
 function renderPartialInventoryList(inventoryCounts) {
   const list = document.getElementById(ID_PARTIAL_INVENTORY_LIST);
   const template = document.getElementById(ID_PARTIAL_CARD_TEMPLATE);
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
 
   if (!list || !template) return;
 
@@ -622,7 +622,7 @@ function renderPartialInventoryList(inventoryCounts) {
 function renderCompletedInventoryList(inventoryCounts) {
   const list = document.getElementById(ID_COMPLETED_INVENTORY_LIST);
   const template = document.getElementById(ID_COMPLETED_CARD_TEMPLATE);
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
 
   if (!list || !template) return;
 
@@ -682,7 +682,7 @@ function renderCompletedInventoryList(inventoryCounts) {
 function renderInventory() {
   const date =
     INVENTORY_STATE.filterDate || new Date().toISOString().split("T")[0];
-  const allProducts = CACHE_PRODUCTS || [];
+  const allProducts = CACHE.products || [];
   const allInventory = getData(PAGE_INVENTORY) || [];
 
   // Filtrar productos por búsqueda

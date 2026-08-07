@@ -28,7 +28,7 @@ function updateDashboard() {
   console.log("updateDashboard ejecutado");
 
   // Obtener datos
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   const movements = getData(PAGE_MOVEMENTS) || [];
   const expenses = getData(PAGE_EXPENSES) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
@@ -108,7 +108,7 @@ function formatCurrency(amount) {
  * @returns {string}
  */
 function getWhatsAppStockMessage() {
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   const critical = products.filter((p) => {
     const criticalThreshold = p.criticalStockThreshold ?? 0;
     return (p.quantity ?? 0) <= criticalThreshold;
@@ -347,7 +347,7 @@ function updateAccountingSummary() {
  * @returns {Object} Objeto de contabilidad
  */
 function createTodayAccounting(today, yesterday) {
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   const movements = getData(PAGE_MOVEMENTS) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
   const expenses = getData(PAGE_EXPENSES) || [];

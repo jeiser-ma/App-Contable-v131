@@ -135,9 +135,14 @@ navigation.js gestiona:
 
 ## ALMACENAMIENTO
 
-storage.js proporciona:
+storage.js proporciona (legado, en uso hoy):
 - getData(key): Obtiene datos del localStorage
 - setData(key, value): Guarda datos en localStorage
+
+Capa nueva de acceso a datos (épica en curso):
+- Documentación y estructura: database/ARCHITECTURE.md
+- Carpetas: database/{providers,repositories,cache,schemas}
+- Los módulos seguirán migrando de getData/setData a repositorios (HUs posteriores)
 
 Los datos se almacenan como JSON en localStorage con las siguientes claves:
 - "products": Lista de productos
@@ -148,6 +153,7 @@ Los datos se almacenan como JSON en localStorage con las siguientes claves:
 - "units": Lista de unidades de medida
 - "expenseConcepts": Lista de conceptos de gastos
 - "salaryPercentage": Porcentaje de salario
+- "stores", "finances", "stock", "currentStoreId", etc. (ver STG_KEYS en storage.js)
 
 ## COMPONENTES
 

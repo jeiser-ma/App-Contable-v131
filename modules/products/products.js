@@ -140,7 +140,7 @@ function handleScanProductCode() {
   }
   openScannerModal({
     onSuccess: (decodedText) => {
-      const found = CACHE_PRODUCTS.find((p) => (p.codes || []).includes(decodedText));
+      const found = CACHE.products.find((p) => (p.codes || []).includes(decodedText));
       if (found) {
         openEditProductModal(found.id);
       } else {
@@ -622,7 +622,7 @@ function renderProductsList(products) {
  * @returns {void}
  */
 function renderProducts() {
-  const allProducts = CACHE_PRODUCTS || [];
+  const allProducts = CACHE.products || [];
 
   // Primero filtrar, luego ordenar
   const filtered = filterProducts(allProducts);
@@ -647,7 +647,7 @@ function saveProductFromModal() {
   const criticalStockThreshold = Number(getInputValue(ID_INPUT_CRITICAL_STOCK_THRESHOLD));
 
   // Obtener los productos (caché en memoria)
-  let products = CACHE_PRODUCTS || [];
+  let products = CACHE.products || [];
 
   // Limpiar errores de validación anteriores del modal
   clearInputErrors([ID_INPUT_NAME, ID_INPUT_LOW_STOCK_THRESHOLD, ID_INPUT_CRITICAL_STOCK_THRESHOLD]);

@@ -1,7 +1,8 @@
 {
-  "STORE_SCHEMA": "Esquema de puntos de venta",
+  "STORE_SCHEMA": "Esquema de puntos de venta. salaryPercentage es por PV. salesPoint global deprecado.",
   "id": "uuid",
   "name": "Paradero",
   "active": true,
+  "salaryPercentage": 1.7,
   "createdAt": "timestamp"
 }

@@ -216,7 +216,8 @@ function exportAccountingToCsv(accounting) {
 
   const salesPoint = typeof getSalesPoint === "function" ? getSalesPoint() : "";
   const isoDate = accounting.date || new Date().toISOString().slice(0, 10);
-  const products = CACHE_PRODUCTS || [];
+  // Catálogo solo para resolver nombres; la fila de CSV es accounting.products (ya filtrada al guardar)
+  const products = (typeof CACHE !== "undefined" && CACHE.products) || [];
   const productsById = new Map(products.map((p) => [p.id, p]));
 
   const productHeaderMap = {
@@ -232,10 +233,8 @@ function exportAccountingToCsv(accounting) {
 
   const productColumns = Object.keys(productHeaderMap);
 
-  const accProdFilter = accounting.products.filter(ap => productsById.has(ap.productId) && ap.yesterdayStock > 0);
-  const productRows = (accProdFilter || [])
-    //.filter(ap => productsById.has(ap.productId)) // solo productos con stock > 0
-    .map((ap) => {
+  // Un solo criterio: lo que está guardado en la contabilidad del día (sin re-filtrar por stock)
+  const productRows = (accounting.products || []).map((ap) => {
     const product = productsById.get(ap.productId);
     return {
       producto: product?.name ?? ap.productId,

@@ -149,7 +149,7 @@ function exportCurrentAccountingToCsv() {
     return;
   }
 
-  const ok = exportAccountingToCsv(currentAccounting, CACHE_PRODUCTS);
+  const ok = exportAccountingToCsv(currentAccounting, CACHE.products);
   if (ok) {
     showToast("Contabilidad exportada correctamente.", TOAST_COLORS.SUCCESS, 3);
   }
@@ -298,28 +298,37 @@ async function renderAccounting() {
 // =======================================================
 
 /**
+ * Indica si una contabilidad está cerrada (snapshot inmutable).
+ * Tolera true booleano y formas legacy del export.
+ * @param {Object|null|undefined} acc
+ * @returns {boolean}
+ */
+function isAccountingClosed(acc) {
+  if (!acc) return false;
+  return acc.closed === true || acc.closed === "true" || acc.closed === 1;
+}
+
+/**
  * Carga la contabilidad del día seleccionado
  * @returns {void}
  */
 async function loadAccounting() {
   const allAccounting = getData(PAGE_ACCOUNTING) || [];
 
-
-  // // Filtrar la contabilidad por fecha
-  currentAccounting = allAccounting.find(a => a.date === ACCOUNTING_STATE.filterDate);
+  currentAccounting = Array.isArray(allAccounting)
+    ? allAccounting.find((a) => a.date === ACCOUNTING_STATE.filterDate)
+    : null;
 
   if (!currentAccounting) {
     // Crear nueva contabilidad para el día
-    createNewAccounting(ACCOUNTING_STATE.filterDate);
-    // Guardar la contabilidad creada
+    await createNewAccounting(ACCOUNTING_STATE.filterDate);
     saveAccounting();
-  } else if (!currentAccounting.closed) {
-    // Contabilidad abierta: actualizar products y expenses con datos actuales
-    refreshOpenAccountingData();
-    // Guardar la contabilidad actualizada
+  } else if (!isAccountingClosed(currentAccounting)) {
+    // Solo abiertas se recalculan. Cerradas: snapshot tal cual (import / días viejos).
+    await refreshOpenAccountingData();
     saveAccounting();
   }
-
+  // Cerrada: no tocar products ni expenses
 }
 
 
@@ -413,7 +422,7 @@ async function createNewAccounting(date) {
  * @returns {void}
  */
 async function refreshOpenAccountingData() {
-  if (!currentAccounting || currentAccounting.closed) return;
+  if (!currentAccounting || isAccountingClosed(currentAccounting)) return;
 
   currentAccounting.products = buildAccountingProductsForDate(currentAccounting.date);
   currentAccounting.expenses = buildAccountingExpensesForDate(currentAccounting.date);
@@ -438,86 +447,163 @@ async function refreshOpenAccountingData() {
 
 
 /**
- * Construye la lista de productos de contabilidad para una fecha
+ * Construye la lista de productos de contabilidad para una fecha.
+ *
+ * Contabilidad CERRADA: devuelve el snapshot guardado sin filtrar ni recalcular
+ * (importaciones / historial deben verse completos).
+ *
+ * Contabilidad ABIERTA o nueva: incluye producto si
+ * - stock inicial (inicio) > 0, o
+ * - hubo movimientos de ayer, o
+ * - sin cierre previo y quantity > 0 en catálogo, o
+ * - ya estaba en el snapshot abierto de ese día (preserva importados/legado
+ *   al refrescar, recalculando cifras pero sin borrar filas importadas de golpe).
+ *
  * @param {string} date - Fecha en formato YYYY-MM-DD
  * @returns {Array} Lista de productos de contabilidad
  */
 function buildAccountingProductsForDate(date) {
   const yesterday = getYesterday(date);
-  const accounting = getData(PAGE_ACCOUNTING).find(a => a.date === date) || null;
-  console.log(">>>>>>>>>>>>>>>accounting: ", accounting);
-  if (accounting && accounting.closed) return accounting.products;
+  const allAccounting = getData(PAGE_ACCOUNTING) || [];
+  const accounting =
+    (Array.isArray(allAccounting)
+      ? allAccounting.find((a) => a.date === date)
+      : null) ||
+    (currentAccounting && currentAccounting.date === date
+      ? currentAccounting
+      : null);
 
-  const products = CACHE_PRODUCTS.filter(p => p.quantity > 0);
+  // Snapshot congelado: cerrada = todo lo que ya tiene, sin filtrar
+  if (isAccountingClosed(accounting)) {
+    return Array.isArray(accounting.products)
+      ? accounting.products.slice()
+      : [];
+  }
+
+  const products = CACHE.products || [];
   const movements = getData(PAGE_MOVEMENTS) || [];
   const inventory = getData(PAGE_INVENTORY) || [];
-  const lastAccounting = getLastAccounting();
+  const lastAccounting = getLastAccounting(date);
 
-  return products.map(product => {
-    // Inicio es la cantidad del inventario de la contabilidad anterior
-    // (de la última contabilidad cerrada)
+  // Productos ya en contabilidad abierta de este día (import / estado previo)
+  const existingSnapshot = Array.isArray(accounting?.products)
+    ? accounting.products
+    : [];
+  const existingByProductId = new Map(
+    existingSnapshot
+      .filter((p) => p && p.productId)
+      .map((p) => [p.productId, p])
+  );
 
-    // Inicializar el inicio con stock cero
+  // Catálogo + ids que solo estaban en el snapshot (por si faltan en products)
+  const catalogById = new Map(products.map((p) => [p.id, p]));
+  const idsToBuild = new Set([
+    ...products.map((p) => p.id),
+    ...existingByProductId.keys(),
+  ]);
+
+  const result = [];
+
+  idsToBuild.forEach((productId) => {
+    const product = catalogById.get(productId) || { id: productId, price: 0 };
+
     let inicio = 0;
-
-    // Si hay contabilidad anterior, 
-    // actualizar el inicio con la cantidad del inventario de la contabilidad anterior
     if (lastAccounting) {
-      const lastAccProduct = lastAccounting.products.find(p => p.productId === product.id);
+      const lastAccProduct = (lastAccounting.products || []).find(
+        (p) => p.productId === productId
+      );
       if (lastAccProduct) {
-        //lastStock = lastAccProduct.yesterdayStock + lastAccProduct.yesterdayEntries - lastAccProduct.yesterdayExits;
-        inicio = lastAccProduct.todayInventory || 0;
+        inicio = Number(lastAccProduct.todayInventory) || 0;
       }
     }
 
-    // Entradas de ayer
     const yesterdayEntries = movements
-      .filter(m => m.date === yesterday && m.type === MOVEMENTS_TYPES.IN && m.productId === product.id)
-      .reduce((sum, m) => sum + m.quantity, 0);
+      .filter(
+        (m) =>
+          m.date === yesterday &&
+          m.type === MOVEMENTS_TYPES.IN &&
+          m.productId === productId
+      )
+      .reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
 
-    // Salidas de ayer
     const yesterdayExits = movements
-      .filter(m => m.date === yesterday && m.type === MOVEMENTS_TYPES.OUT && m.productId === product.id)
-      .reduce((sum, m) => sum + m.quantity, 0);
+      .filter(
+        (m) =>
+          m.date === yesterday &&
+          m.type === MOVEMENTS_TYPES.OUT &&
+          m.productId === productId
+      )
+      .reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
 
-    // Inventario de hoy
-    const todayInventory = inventory.find(inv => inv.date === date && inv.productId === product.id && ["CONFIRMED", "CLOSED"].includes(inv.status));
-    let fin = null;
-    if (todayInventory) {
-      fin = (todayInventory.warehouseQuantity || 0) + (todayInventory.storeQuantity || 0);
+    const hasOpeningStock = inicio > 0;
+    const hasYesterdayMovements =
+      yesterdayEntries > 0 || yesterdayExits > 0;
+    const bootstrapFromCatalog =
+      !lastAccounting && (Number(product.quantity) || 0) > 0;
+    // Mantener filas que ya venían en el snapshot abierto (export importado)
+    const wasInOpenSnapshot = existingByProductId.has(productId);
+
+    if (
+      !hasOpeningStock &&
+      !hasYesterdayMovements &&
+      !bootstrapFromCatalog &&
+      !wasInOpenSnapshot
+    ) {
+      return;
     }
 
-    // Ventas = inicio + entradas ayer - salidas ayer - fin (inventario de hoy)
-    const sales = fin !== null
-      ? inicio + yesterdayEntries - yesterdayExits - fin
-      : null; // null indica que falta inventario de hoy
+    const todayInventory = inventory.find(
+      (inv) =>
+        inv.date === date &&
+        inv.productId === productId &&
+        ["CONFIRMED", "CLOSED"].includes(inv.status)
+    );
+    let fin = null;
+    if (todayInventory) {
+      fin =
+        (Number(todayInventory.warehouseQuantity) || 0) +
+        (Number(todayInventory.storeQuantity) || 0);
+    }
+
+    const sales =
+      fin !== null
+        ? inicio + yesterdayEntries - yesterdayExits - fin
+        : null;
 
     const unitPrice = roundTo2(product.price || 0);
-    const amount = sales !== null ? roundTo2(sales * (product.price || 0)) : 0;
+    const amount =
+      sales !== null ? roundTo2(sales * (product.price || 0)) : 0;
 
-    return {
-      productId: product.id,
+    result.push({
+      productId,
       yesterdayStock: inicio,
-      yesterdayEntries: yesterdayEntries,
-      yesterdayExits: yesterdayExits,
+      yesterdayEntries,
+      yesterdayExits,
       todayInventory: fin,
-      sales: sales,
+      sales,
       unitPrice,
-      amount
-    };
+      amount,
+    });
   });
+
+  return result;
 }
 
 
 /**
- * Obtiene la última contabilidad registrada con estado cerrada
- * @returns {Object|null} Última contabilidad cerrada o null si no existe
+ * Obtiene la última contabilidad cerrada anterior a una fecha de referencia.
+ * Si no se pasa fecha, usa la más reciente cerrada en general.
+ * @param {string} [beforeDate] - YYYY-MM-DD; solo se consideran cierres con date < beforeDate
+ * @returns {Object|null} Contabilidad cerrada o null
  */
-function getLastAccounting() {
+function getLastAccounting(beforeDate) {
   const allAccounting = getData(PAGE_ACCOUNTING) || [];
 
-  // Filtrar solo las contabilidades cerradas
-  const closedAccountings = allAccounting.filter(a => a.closed === true);
+  let closedAccountings = allAccounting.filter((a) => a.closed === true);
+
+  if (beforeDate) {
+    closedAccountings = closedAccountings.filter((a) => a.date < beforeDate);
+  }
 
   // Si no hay contabilidades cerradas, retornar null
   if (closedAccountings.length === 0) {
@@ -526,7 +612,7 @@ function getLastAccounting() {
 
   // Encontrar la contabilidad con la fecha más reciente
   let lastAccounting = closedAccountings[0];
-  closedAccountings.forEach(accounting => {
+  closedAccountings.forEach((accounting) => {
     const accountingDate = new Date(accounting.date + "T00:00:00");
     const lastAccountingDate = new Date(lastAccounting.date + "T00:00:00");
     if (accountingDate > lastAccountingDate) {
@@ -575,7 +661,9 @@ function validateInventory() {
 // =======================================================
 
 /**
- * Renderiza la lista de productos de contabilidad
+ * Renderiza la lista de productos de contabilidad.
+ * Fuente única: currentAccounting.products (ya filtrada al construir/guardar).
+ * Solo se aplica el filtro de búsqueda; no se re-filtra por stock del catálogo.
  * @returns {void}
  */
 async function renderAccountingProducts() {
@@ -596,23 +684,21 @@ async function renderAccountingProducts() {
   // Limpiar la lista
   list.replaceChildren();
 
-  // Filtro por texto de búsqueda (busca en nombre del producto)
-  let filteredProducts = filterAccountingProducts(currentAccounting.products);
+  // Filtro opcional por texto de búsqueda (nombre); el resto ya está en products[]
+  let filteredProducts = filterAccountingProducts(currentAccounting.products || []);
 
-  // Recorrer los productos
-  //currentAccounting.products.forEach(async accountingProd => {
-  filteredProducts.forEach(async accountingProd => {
-
-    // crear la tarjeta de producto
+  filteredProducts.forEach(async (accountingProd) => {
     const newProductCard = await createProductCardFromTemplate(accountingProd);
 
     if (!newProductCard) {
-      console.error(`No se pudo crear el new product card con id: ${product.name}`);
+      console.warn(
+        "No se pudo crear card de contabilidad para productId:",
+        accountingProd?.productId
+      );
       return;
     }
 
     list.appendChild(newProductCard);
-    
   });
 }
 
@@ -627,60 +713,96 @@ async function renderAccountingProducts() {
  * @returns {Array} Lista de productos filtrados
  */
 function filterAccountingProducts(accountingProducts) {
-  let filtered = [...accountingProducts];
+  let filtered = Array.isArray(accountingProducts)
+    ? [...accountingProducts]
+    : [];
 
   // Filtro por texto de búsqueda (nombre del producto)
   if (ACCOUNTING_STATE.searchText) {
+    const q = ACCOUNTING_STATE.searchText.toLowerCase();
     filtered = filtered.filter((ap) => {
-      const product = CACHE_PRODUCTS.find((p) => p.id === ap.productId);
-      if (!product) { console.error(`Producto no encontrado: ${ap.productId}`); return false; }
-      return product.name.toLowerCase().includes(ACCOUNTING_STATE.searchText.toLowerCase());
+      const product = (CACHE.products || []).find((p) => p.id === ap.productId);
+      // Sin catálogo: se puede buscar por fragmento de id
+      const name = (product?.name || ap.productId || "").toLowerCase();
+      return name.includes(q);
     });
   }
-
-  // Filtro por fecha
-  // if (ACCOUNTING_STATE.filterDate) {
-  //   filtered = filtered.filter((p) => p.date === ACCOUNTING_STATE.filterDate);
-  // }
 
   return filtered;
 }
 
 
 /**
- * Crea una nueva tarjeta de producto desde el template
- * @param {HTMLElement} clonedTemplate - Template de la tarjeta de producto
- * @param {string} productName - Nombre del producto
- * @param {Object} accountingProd - Producto a crear la tarjeta
- * @returns {HTMLElement} Tarjeta de producto creada
+ * Crea una tarjeta de producto desde el template.
+ * Usa el catálogo para el nombre; si no está (import / producto borrado),
+ * igual renderiza la fila con nombre de respaldo (snapshot de contabilidad).
+ * @param {Object} accountingProd - Línea de contabilidad
+ * @returns {HTMLElement|undefined} Fragmento del template o undefined si no hay template
  */
 async function createProductCardFromTemplate(accountingProd) {
-  // Obtener el elemento <template> del DOM de la tarjeta de producto
   const template = document.getElementById(ID_ACCOUNTING_PRODUCT_CARD_TEMPLATE);
   if (!template) {
     console.error("template de producto no encontrado");
     return;
   }
 
-  const prod = CACHE_PRODUCTS.find(p => p.id === accountingProd.productId);
-  if (!prod) return;
+  if (!accountingProd || !accountingProd.productId) {
+    console.warn("Línea de contabilidad sin productId");
+    return;
+  }
 
-  // crear una copia del template
+  const prod =
+    (typeof getProductFromCache === "function"
+      ? getProductFromCache(accountingProd.productId)
+      : null) ||
+    (CACHE.products || []).find((p) => p.id === accountingProd.productId);
+
+  const displayName =
+    (prod && prod.name) ||
+    `Producto (${String(accountingProd.productId).slice(0, 8)}…)`;
+
   const clonedTemplate = template.content.cloneNode(true);
 
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_NAME).textContent = prod.name;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_STOCK).textContent = accountingProd.yesterdayStock;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_ENTRIES).textContent = accountingProd.yesterdayEntries;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_EXITS).textContent = accountingProd.yesterdayExits;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_MISSING_INVENTORY_WARNING).classList.toggle("d-none", accountingProd.todayInventory !== null);
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_TODAY_INVENTORY).textContent = accountingProd.todayInventory === null ? "--" : accountingProd.todayInventory;
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_SALES).textContent = accountingProd.sales === null ? "--" : accountingProd.sales;
+  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_NAME).textContent =
+    displayName;
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_STOCK
+  ).textContent = accountingProd.yesterdayStock;
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_ENTRIES
+  ).textContent = accountingProd.yesterdayEntries;
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_YESTERDAY_EXITS
+  ).textContent = accountingProd.yesterdayExits;
+  clonedTemplate
+    .querySelector("." + CLASS_ACCOUNTING_PRODUCT_MISSING_INVENTORY_WARNING)
+    .classList.toggle(
+      "d-none",
+      accountingProd.todayInventory !== null &&
+        accountingProd.todayInventory !== undefined
+    );
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_TODAY_INVENTORY
+  ).textContent =
+    accountingProd.todayInventory === null ||
+    accountingProd.todayInventory === undefined
+      ? "--"
+      : accountingProd.todayInventory;
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_SALES
+  ).textContent =
+    accountingProd.sales === null || accountingProd.sales === undefined
+      ? "--"
+      : accountingProd.sales;
 
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_UNIT_PRICE).textContent = formatTo2(accountingProd.unitPrice);
-  clonedTemplate.querySelector("." + CLASS_ACCOUNTING_PRODUCT_TOTAL_AMOUNT).textContent = formatTo2(accountingProd.amount);
-  console.log("new product card creado correctamente: ", prod.name);
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_UNIT_PRICE
+  ).textContent = formatTo2(accountingProd.unitPrice);
+  clonedTemplate.querySelector(
+    "." + CLASS_ACCOUNTING_PRODUCT_TOTAL_AMOUNT
+  ).textContent = formatTo2(accountingProd.amount);
+
   return clonedTemplate;
-
 }
 
 
@@ -888,7 +1010,7 @@ function renderCloseButton() {
   if (!btn) return;
 
   // Mostrar/ocultar botón de cerrar
-  if (currentAccounting.closed) {
+  if (isAccountingClosed(currentAccounting)) {
     btn.classList.add("d-none");
     return;
   } else {
@@ -899,7 +1021,7 @@ function renderCloseButton() {
     const canClose = !validateInventory() &&
       currentAccounting.cashSales > 0 &&
       currentAccounting.transferSales > 0 &&
-      !currentAccounting.closed;
+      !isAccountingClosed(currentAccounting);
     // Deshabilitar/habilitar botón de cerrar
     btn.disabled = !canClose;
   }
@@ -907,14 +1029,14 @@ function renderCloseButton() {
 }
 
 /**
- * Actualiza el estado del botón de cerrar contabilidad
+ * Actualiza el estado del botón de reabrir contabilidad
  * @returns {void}
  */
 function renderReopenButton() {
   const btn = document.getElementById(ID_BTN_REOPEN_ACCOUNTING);
   if (!btn) return;
 
-  btn.classList.toggle("d-none", !currentAccounting.closed);
+  btn.classList.toggle("d-none", !isAccountingClosed(currentAccounting));
 }
 
 /**
@@ -1040,7 +1162,11 @@ function confirmReopenAccounting() {
 }
 
 /**
- * Reabre la contabilidad
+ * Reabre la contabilidad del día.
+ * 1) Marca contabilidad abierta
+ * 2) Desbloquea inventarios del día (todos, no solo los de products[])
+ * 3) Persiste y re-renderiza (refreshOpen recalcula products con criterio contable,
+ *    no por quantity del catálogo)
  * @returns {void}
  */
 function reopenAccounting() {
@@ -1048,9 +1174,11 @@ function reopenAccounting() {
   currentAccounting.closed = false;
   currentAccounting.closedAt = null;
 
+  // Antes del refresh: liberar inventarios del día (si no, quedan CLOSED y no se editan)
   changeInventoryAccountingStatus("CONFIRMED");
 
   saveAccounting();
+  // loadAccounting → refreshOpenAccountingData recalcula products y vuelve a guardar
   renderAccounting();
   showToast("Contabilidad reabierta correctamente", TOAST_COLORS.SUCCESS, 3);
 }
@@ -1074,7 +1202,7 @@ function confirmCloseAccounting() {
     return;
   }
 
-  if (currentAccounting.closed) {
+  if (isAccountingClosed(currentAccounting)) {
     showToast("Esta contabilidad ya está cerrada", TOAST_COLORS.PRIMARY, 3);
     return;
   }
@@ -1096,7 +1224,7 @@ function confirmCloseAccounting() {
 function updateProductsAccountingStock() {
   if (!currentAccounting?.products?.length) return;
 
-  const productsUpdated = [...CACHE_PRODUCTS];
+  const productsUpdated = [...CACHE.products];
   currentAccounting.products.forEach((accProduct) => {
     const product = productsUpdated.find((p) => p.id === accProduct.productId);
     if (product) {
@@ -1109,33 +1237,41 @@ function updateProductsAccountingStock() {
 }
 
 /**
- * Cambia el estado de los inventarios de los productos de la contabilidad.
- * Cerrar: CONFIRMED → CLOSED. Reabrir: CLOSED → CONFIRMED.
- * Solo afecta inventarios de la fecha de la contabilidad y cuyos productId están en ella.
- * @param {string} newStatus - "CLOSED" al cerrar contabilidad, "CONFIRMED" al reabrir
+ * Cambia el estado de los inventarios ligados a la contabilidad del día.
+ *
+ * - Al cerrar (CLOSED): solo inventarios de products[] de la contabilidad
+ *   (los del día que entraron al cierre).
+ * - Al reabrir (CONFIRMED): TODOS los inventarios de esa fecha con status CLOSED.
+ *   Así no quedan productos “huérfanos” bloqueados si la lista de products se
+ *   recalcula o se filtró mal en un refresh anterior.
+ *
+ * @param {string} newStatus - "CLOSED" al cerrar, "CONFIRMED" al reabrir
  * @returns {void}
  */
 function changeInventoryAccountingStatus(newStatus) {
-  if (!currentAccounting?.products?.length) return;
+  if (!currentAccounting) return;
   if (newStatus !== "CONFIRMED" && newStatus !== "CLOSED") return;
 
   const productIds = new Set(
-    currentAccounting.products.map((p) => p.productId)
+    (currentAccounting.products || []).map((p) => p.productId)
   );
   const inventory = getData(PAGE_INVENTORY) || [];
-
   const isClosing = newStatus === "CLOSED";
+
   inventory.forEach((inv) => {
-    if (inv.date !== currentAccounting.date || !productIds.has(inv.productId)) return;
+    if (inv.date !== currentAccounting.date) return;
 
     const status = inv.status;
     const isCurrentlyOpen = status === "CONFIRMED" || status == null;
     const isCurrentlyClosed = status === "CLOSED";
 
-    if (isClosing && isCurrentlyOpen) {
-      inv.status = "CLOSED";
-    } else if (!isClosing && isCurrentlyClosed) {
-      inv.status = "CONFIRMED";
+    if (isClosing) {
+      // Solo productos que están en el snapshot de contabilidad
+      if (!productIds.has(inv.productId)) return;
+      if (isCurrentlyOpen) inv.status = "CLOSED";
+    } else {
+      // Reabrir: desbloquear cualquier inventario del día
+      if (isCurrentlyClosed) inv.status = "CONFIRMED";
     }
   });
 

@@ -438,7 +438,7 @@ function isCurrencyInUse(currencyCode) {
     return true;
   }
 
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   if (
     products.some(
       (p) => p.prices && Object.prototype.hasOwnProperty.call(p.prices, code)
@@ -696,7 +696,7 @@ function deleteUnit(index) {
   const unit = units[index];
 
   // Verificar si está en uso en productos
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   const isInUse = products.some(p => p.um && p.um.toLowerCase() === unit.toLowerCase());
 
   if (isInUse) {
@@ -752,7 +752,7 @@ function confirmDeleteUnit() {
   const deleted = units[index];
 
   // Verificar nuevamente si está en uso
-  const products = CACHE_PRODUCTS || [];
+  const products = CACHE.products || [];
   const isInUse = products.some(p => p.um && p.um.toLowerCase() === deleted.toLowerCase());
 
   if (isInUse) {
