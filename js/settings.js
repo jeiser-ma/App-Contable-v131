@@ -31,6 +31,9 @@ const ID_SALES_POINT_ERROR_FEEDBACK = "salesPointErrorFeedback";
 const ID_APP_VERSION_TEXT = "appVersionText";
 const ID_APP_VERSION_CONTAINER = "appVersionContainer";
 const ID_APP_LAST_UPDATE_TEXT = "appLastUpdateDateText";
+const ID_PERSISTENCE_BACKEND_TEXT = "persistenceBackendText";
+const ID_PERSISTENCE_HU15_TEXT = "persistenceHu15Text";
+const ID_PERSISTENCE_HU16_TEXT = "persistenceHu16Text";
 const ID_BTN_EXPORT_APP_STATE = "btnExportAppState";
 const ID_BTN_IMPORT_APP_STATE = "btnImportAppState";
 const ID_INPUT_IMPORT_APP_STATE = "inputImportAppState";
@@ -84,6 +87,7 @@ async function onSettingsPageLoaded() {
   // Configurar la versión y la fecha de última actualización de la app
   setupAppVersion();
   setupAppLastUpdate();
+  await setupPersistenceDiagnostics();
 
   // Configurar el botón para exportar el estado de la app en JSON
   setupExportAppStateListener();
@@ -268,6 +272,50 @@ function setupAppVersion() {
  */
 function setupAppLastUpdate() {
   setLabelText(ID_APP_LAST_UPDATE_TEXT, APP_LAST_UPDATE);
+}
+
+/**
+ * Pinta un pill de diagnóstico (ok = verde, si no = warning).
+ * @param {string} id
+ * @param {string} text
+ * @param {boolean} ok
+ * @returns {void}
+ */
+function setPersistenceStatusPill(id, text, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("text-success", "text-warning", "text-danger", "text-dark");
+  el.classList.add(ok ? "text-success" : "text-warning");
+}
+
+/**
+ * Muestra en Ajustes si HU15/HU16 corrieron (sin consola, para celular).
+ * @returns {Promise<void>}
+ */
+async function setupPersistenceDiagnostics() {
+  if (typeof getPersistenceDiagnostics !== "function") return;
+
+  const d = await getPersistenceDiagnostics();
+  const backendOk = d.backend === "indexedDB";
+  const hu15Ok = d.hu15 && backendOk;
+  const hu16Ok = d.hu16 && (d.products === 0 || d.stock >= d.products);
+
+  setPersistenceStatusPill(
+    ID_PERSISTENCE_BACKEND_TEXT,
+    d.backend === "indexedDB" ? "IndexedDB" : d.backend || "—",
+    backendOk
+  );
+  setPersistenceStatusPill(
+    ID_PERSISTENCE_HU15_TEXT,
+    hu15Ok ? "Listo" : d.hu15 ? "Flag sí, sin IDB" : "Pendiente",
+    hu15Ok
+  );
+  setPersistenceStatusPill(
+    ID_PERSISTENCE_HU16_TEXT,
+    `${hu16Ok ? "Listo" : d.hu16 ? "Incompleto" : "Pendiente"} · ${d.stock}/${d.products}`,
+    hu16Ok
+  );
 }
 
 /**

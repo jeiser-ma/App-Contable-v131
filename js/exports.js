@@ -65,6 +65,13 @@ async function getAppState() {
   }
   state._exportedAt = new Date().toISOString();
   state._appVersion = typeof APP_VERSION !== "undefined" ? APP_VERSION : "?";
+  if (typeof getPersistenceDiagnostics === "function") {
+    try {
+      state._diagnostics = await getPersistenceDiagnostics();
+    } catch (_) {
+      state._diagnostics = null;
+    }
+  }
   return state;
 }
 

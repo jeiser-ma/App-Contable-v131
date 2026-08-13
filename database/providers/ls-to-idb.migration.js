@@ -111,3 +111,56 @@ async function initAppPersistence() {
     await migrateProductsToCatalogAndStock();
   }
 }
+
+/**
+ * Estado de persistencia y migraciones HU15/HU16 (Ajustes y export).
+ * Pensado para verificar en el celular sin consola.
+ * @returns {Promise<{
+ *   backend: string,
+ *   hu15: boolean,
+ *   hu16: boolean,
+ *   products: number,
+ *   stock: number
+ * }>}
+ */
+async function getPersistenceDiagnostics() {
+  const backend =
+    typeof Storage !== "undefined" && Storage && Storage.name
+      ? String(Storage.name)
+      : "none";
+  const hu15Flag =
+    typeof LS_IDB_MIGRATED_FLAG !== "undefined"
+      ? LS_IDB_MIGRATED_FLAG
+      : "appContable.idbMigrated";
+  const hu16Flag =
+    typeof LS_STOCK_MIGRATED_FLAG !== "undefined"
+      ? LS_STOCK_MIGRATED_FLAG
+      : "appContable.stockMigrated";
+
+  let products = 0;
+  let stock = 0;
+  try {
+    if (typeof getAllProducts === "function") {
+      const list = await getAllProducts();
+      products = Array.isArray(list) ? list.length : 0;
+    }
+  } catch (_) {
+    products = 0;
+  }
+  try {
+    if (typeof getAllStock === "function") {
+      const list = await getAllStock();
+      stock = Array.isArray(list) ? list.length : 0;
+    }
+  } catch (_) {
+    stock = 0;
+  }
+
+  return {
+    backend,
+    hu15: localStorage.getItem(hu15Flag) === "1",
+    hu16: localStorage.getItem(hu16Flag) === "1",
+    products,
+    stock,
+  };
+}

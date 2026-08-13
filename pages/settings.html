@@ -162,14 +162,27 @@
       <span class="flex-grow-1">Última actualización</span>
       <span id="appLastUpdateDateText" class="fw-medium text-dark rounded-pill border px-2">--</span>
     </div>
-    <div id="appVersionContainer" class="mb-1 d-flex align-items-center">
+    <div id="appVersionContainer" class="mb-2 d-flex align-items-center">
       <span class="flex-grow-1">Versión</span>
       <span id="appVersionText" class="fw-medium text-dark rounded-pill border px-2">--</span>
+    </div>
+    <div class="mb-2 d-flex align-items-center">
+      <span class="flex-grow-1">Almacén</span>
+      <span id="persistenceBackendText" class="fw-medium text-dark rounded-pill border px-2">--</span>
+    </div>
+    <div class="mb-2 d-flex align-items-center">
+      <span class="flex-grow-1">Datos (HU15)</span>
+      <span id="persistenceHu15Text" class="fw-medium text-dark rounded-pill border px-2">--</span>
+    </div>
+    <div class="mb-2 d-flex align-items-center">
+      <span class="flex-grow-1">Stock (HU16)</span>
+      <span id="persistenceHu16Text" class="fw-medium text-dark rounded-pill border px-2">--</span>
     </div>
     <!-- Texto informativo -->
     <div class="text-muted fs-small btn-chip mb-3">
       <i class="bi bi-arrow-repeat"></i>
       Para ver la última versión, cierra la app por completo y ábrela de nuevo.
+      HU15 listo + almacén IndexedDB y HU16 con stock ≥ productos = migraciones hechas.
     </div>
   </div>
 
