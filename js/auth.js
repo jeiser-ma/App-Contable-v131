@@ -23,6 +23,8 @@ async function initCurrencies() {
     await ensureCurrenciesDefaults();
     return;
   }
+  // Login (index): solo LS. Si HU15 ya migró, las monedas viven en IndexedDB.
+  if (localStorage.getItem("appContable.idbMigrated") === "1") return;
   const list = getData(STG_KEYS.CURRENCIES);
   if (!Array.isArray(list) || list.length === 0) {
     setData(STG_KEYS.CURRENCIES, [...DEFAULT_CURRENCIES]);

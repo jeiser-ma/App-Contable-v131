@@ -105,7 +105,7 @@ async function migrateProductsToCodes() {
  */
 async function onProductsPageLoaded() {
   await migrateProductsToCodes();
-  loadProductsCache();
+  await loadProductsCache();
 
   // Cargar modal de productos
   console.log("Loading product-modal");
@@ -711,24 +711,46 @@ async function saveProductFromModal() {
       setInputError(ID_PRODUCT_ID, "El producto no existe");
       return;
     }
+    const prices =
+      typeof pricesFromProduct === "function"
+        ? pricesFromProduct({
+            price: priceRounded,
+            prices: productToEdit.prices,
+          })
+        : {
+            [(typeof DEFAULT_CURRENCIES !== "undefined" &&
+              DEFAULT_CURRENCIES[0]) ||
+              "CUP"]: priceRounded,
+          };
     const updatedProduct = {
       ...productToEdit,
       codes: codesRaw,
       name,
       price: priceRounded,
+      prices,
       um,
       lowStockThreshold,
       criticalStockThreshold,
     };
     await saveProduct(updatedProduct);
     syncProductInCache(updatedProduct);
+    await syncCurrentStoreStockFromProduct(updatedProduct);
 
   } else {
     // ALTA
+    const prices =
+      typeof pricesFromProduct === "function"
+        ? pricesFromProduct({ price: priceRounded })
+        : {
+            [(typeof DEFAULT_CURRENCIES !== "undefined" &&
+              DEFAULT_CURRENCIES[0]) ||
+              "CUP"]: priceRounded,
+          };
     const newProduct = createProduct({
       codes: codesRaw,
       name,
       price: priceRounded,
+      prices,
       um,
       quantity: 0,
       lowStockThreshold,
@@ -736,6 +758,7 @@ async function saveProductFromModal() {
     });
     await saveProduct(newProduct);
     syncProductInCache(newProduct);
+    await syncCurrentStoreStockFromProduct(newProduct);
   }
 
   // Cerrar el modal
@@ -807,11 +830,25 @@ async function updateProductQuantity(productId, quantityDelta) {
   // Si la nueva cantidad es negativa, no se actualiza
   if (newQuantity < 0) return -1; // Error: cantidad negativa
 
-  // Actualizar la cantidad del producto
+  // Actualizar la cantidad del producto (dual-write: catálogo + stock del PV)
   const updatedProduct = { ...product, quantity: newQuantity };
   await saveProduct(updatedProduct);
   syncProductInCache(updatedProduct);
+  await syncCurrentStoreStockFromProduct(updatedProduct, { quantity: newQuantity });
   return newQuantity;
+}
+
+/**
+ * Dual-write HU16: persiste stock del PV actual sin quitar campos del producto.
+ * @param {Object} product
+ * @param {Object} [overrides]
+ * @returns {Promise<Object|null>}
+ */
+async function syncCurrentStoreStockFromProduct(product, overrides) {
+  if (typeof upsertStockForProduct !== "function" || !product?.id) return null;
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+  return upsertStockForProduct(product, storeId, overrides);
 }
 
 /**
@@ -864,6 +901,9 @@ async function confirmDeleteProduct() {
   UNDO_STATE.type = PAGE_PRODUCTS; // Nombre de la colección en storage
 
   await deleteProduct(idToDel);
+  if (typeof deleteStockByProductId === "function") {
+    await deleteStockByProductId(idToDel);
+  }
   if (typeof removeProductFromCache === "function") {
     removeProductFromCache(idToDel);
   }

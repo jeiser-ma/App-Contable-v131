@@ -62,7 +62,7 @@ window.MOVEMENTS_STATE = MOVEMENTS_STATE;
  */
 async function onMovementsPageLoaded() {
   console.log("onMovementsPageLoaded execution");
-  loadProductsCache();
+  await loadProductsCache();
 
   // Cargar modal de movimientos
   console.log("Loading movement-modal");

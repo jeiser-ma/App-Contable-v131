@@ -110,7 +110,7 @@ let currentAccounting = null;
  */
 async function onAccountingPageLoaded() {
   console.log("onAccountingPageLoaded execution");
-  loadProductsCache();
+  await loadProductsCache();
 
   // Cargar modales de agregar ventas
   // Cargar modal de ventas en efectivo
@@ -1237,8 +1237,8 @@ function confirmCloseAccounting() {
 
 /**
  * Actualiza el stock (quantity) de cada producto con el todayInventory
- * de la contabilidad que se está cerrando.
- * @returns {void}
+ * de la contabilidad que se está cerrando. Dual-write HU16: producto + stock del PV.
+ * @returns {Promise<void>}
  */
 async function updateProductsAccountingStock() {
   if (!currentAccounting?.products?.length) return;
@@ -1253,6 +1253,18 @@ async function updateProductsAccountingStock() {
 
   await saveAllProducts(productsUpdated);
   replaceProductsCache(productsUpdated);
+
+  if (typeof upsertStockForProduct === "function") {
+    const storeId =
+      typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+    for (const accProduct of currentAccounting.products) {
+      const product = productsUpdated.find((p) => p.id === accProduct.productId);
+      if (!product?.id) continue;
+      await upsertStockForProduct(product, storeId, {
+        quantity: product.quantity,
+      });
+    }
+  }
 }
 
 /**

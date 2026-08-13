@@ -37,15 +37,17 @@ const ID_INPUT_IMPORT_APP_STATE = "inputImportAppState";
 const ID_BTN_DELETE_APP_DATA_FULL = "btnDeleteAppDataFull";
 const ID_BTN_RESET_APP_DATA_PRODUCTS = "btnResetAppDataProducts";
 
-/** Claves operativas que se borran en el reset (productos se conservan con stock 0) */
+/** Claves operativas que se borran en el reset (productos y filas de stock se conservan; qty → 0) */
 const OPERATIONAL_STATE_KEYS = [
   PAGE_MOVEMENTS,
   PAGE_INVENTORY,
   PAGE_EXPENSES,
   PAGE_ACCOUNTING,
   PAGE_FINANCES,
-  STG_KEYS.STOCK,
 ];
+
+/** Copia en memoria para lecturas sync (contabilidad / home). Hidratar al boot. */
+let salaryPercentageMem = 1.5;
 //#endregion
 
 /**
@@ -54,7 +56,7 @@ const OPERATIONAL_STATE_KEYS = [
  */
 async function onSettingsPageLoaded() {
   console.log("onSettingsPageLoaded execution");
-  loadProductsCache();
+  await loadProductsCache();
 
   // Cargar modal de confirmación si no está cargado
   loadModal(MODAL_CONFIRM_DELETE);
@@ -105,7 +107,10 @@ function setupDeleteAppDataListeners() {
           "ajustes y la sesión. Tendrás que iniciar sesión de nuevo. ¿Continuar?",
         confirmText: "Eliminar todo",
         confirmButtonClass: "btn-danger",
-        callbackFn: deleteAppDataFull,
+        callbackFn: () =>
+          deleteAppDataFull().catch((err) =>
+            console.error("[settings] deleteAppDataFull", err)
+          ),
       });
   }
 
@@ -128,9 +133,18 @@ function setupDeleteAppDataListeners() {
 }
 
 /**
- * Borrado completo: elimina todo el localStorage y recarga la app
+ * Borrado completo: IndexedDB (STG_KEYS) + localStorage (auth + flag HU15) y recarga
+ * @returns {Promise<void>}
  */
-function deleteAppDataFull() {
+async function deleteAppDataFull() {
+  try {
+    if (typeof Storage !== "undefined" && Storage) {
+      await Storage.ready();
+      await Storage.clear();
+    }
+  } catch (err) {
+    console.error("[settings] deleteAppDataFull Storage.clear", err);
+  }
   localStorage.clear();
   location.reload();
 }
@@ -148,7 +162,9 @@ async function resetAppDataKeepingProducts() {
   }));
 
   for (const key of OPERATIONAL_STATE_KEYS) {
-    localStorage.removeItem(key);
+    if (typeof Storage !== "undefined" && Storage) {
+      await Storage.remove(key);
+    }
     if (typeof invalidateCache === "function") {
       invalidateCache(key);
     }
@@ -156,6 +172,20 @@ async function resetAppDataKeepingProducts() {
 
   await saveAllProducts(products);
   replaceProductsCache(products);
+
+  // Stock del PV: conservar um/precios/umbrales, dejar cantidad en 0
+  if (typeof getAllStock === "function" && typeof saveAllStock === "function") {
+    const stockList = await getAllStock();
+    const zeroedStock = (stockList || []).map((s) => ({
+      ...s,
+      quantity: 0,
+    }));
+    await saveAllStock(zeroedStock);
+    if (typeof invalidateCache === "function") {
+      invalidateCache(STG_KEYS.STOCK);
+    }
+  }
+
   location.reload();
 }
 
@@ -197,11 +227,20 @@ function setupImportAppStateListener() {
       await renderUnits();
       await renderCurrencies();
       await renderConcepts();
-      loadSalaryPercentage().catch((err) =>
-        console.error("[settings] loadSalaryPercentage", err)
-      );
+      if (typeof loadCacheAsync === "function") {
+        await loadCacheAsync(STG_KEYS.PRODUCTS, { force: true });
+      }
+      await loadSalaryPercentage();
+      if (typeof hydrateCurrentStoreIdFromStorage === "function") {
+        await hydrateCurrentStoreIdFromStorage();
+      }
       if (typeof refreshCurrentStoreSelector === "function") {
         await refreshCurrentStoreSelector();
+      }
+      if (typeof backfillMissingStockFromProducts === "function") {
+        const storeId =
+          typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+        await backfillMissingStockFromProducts(storeId);
       }
     } else {
       if (typeof showToast === "function") {
@@ -1019,8 +1058,8 @@ async function loadSalaryPercentage() {
   const input = document.getElementById(ID_INPUT_SALARY_PERCENTAGE);
   if (!input) return;
 
-  const percentage = await getSetting(STG_KEYS.SALARY_PERCENTAGE, 1.7);
-  input.value = percentage !== null && percentage !== undefined ? percentage : 1.7;
+  const percentage = await hydrateSalaryPercentageFromStorage();
+  input.value = percentage;
 }
 
 /**
@@ -1041,6 +1080,7 @@ async function saveSalaryPercentage() {
   }
 
   await saveSetting(STG_KEYS.SALARY_PERCENTAGE, value);
+  salaryPercentageMem = value;
 }
 
 /**
@@ -1083,20 +1123,20 @@ function clearSalaryPercentageError() {
 }
 
 /**
- * Obtiene el porcentaje de salario configurado (sync: lectura directa de Storage/LS)
- * Compatible con callers síncronos (contabilidad, home).
+ * Hidrata salaryPercentageMem desde Storage (initAppPersistence)
+ * @returns {Promise<number>}
+ */
+async function hydrateSalaryPercentageFromStorage() {
+  const raw = await getSetting(STG_KEYS.SALARY_PERCENTAGE, 1.7);
+  const n = Number(raw);
+  salaryPercentageMem = Number.isNaN(n) ? 1.7 : n;
+  return salaryPercentageMem;
+}
+
+/**
+ * Obtiene el porcentaje de salario configurado (sync, memoria hidratada)
  * @returns {number} Porcentaje de salario (default: 1.7)
  */
 function getSalaryPercentage() {
-  try {
-    const raw = localStorage.getItem(STG_KEYS.SALARY_PERCENTAGE);
-    if (raw == null || raw === "") return 1.7;
-    const parsed = JSON.parse(raw);
-    if (parsed === null || parsed === undefined || Number.isNaN(Number(parsed))) {
-      return 1.7;
-    }
-    return Number(parsed);
-  } catch (_) {
-    return 1.7;
-  }
+  return salaryPercentageMem;
 }

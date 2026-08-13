@@ -154,6 +154,11 @@ async function undoDelete() {
       if (typeof syncProductInCache === "function" && payload) {
         syncProductInCache(payload);
       }
+      if (typeof upsertStockForProduct === "function" && payload) {
+        const storeId =
+          typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+        await upsertStockForProduct(payload, storeId);
+      }
       if (typeof renderProducts === "function") {
         await renderProducts();
       }

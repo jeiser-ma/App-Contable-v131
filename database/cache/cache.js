@@ -21,10 +21,10 @@
  * - Por eso usamos CACHE_STATUS[key] y no "si length > 0".
  *
  * Persistencia:
- * - Hoy loadCache lee con getData (sync, legado).
- * - loadCacheAsync usa Storage (async) para cuando los callers sean async.
- * - Escribir en storage sigue siendo responsabilidad de setData / repos;
- *   tras escribir, actualizar caché con replaceCache / syncInCache.
+ * - loadCacheAsync usa Storage (IndexedDB en HU15).
+ * - loadCache sync NO lee localStorage si el backend es IndexedDB:
+ *   solo devuelve memoria; si no está hidratada, no marca loaded.
+ * - Escribir: repos → Storage; luego replaceCache / syncInCache.
  *
  * Uso típico (siempre con STG_KEYS, sin magic strings):
  *   loadCache(STG_KEYS.PRODUCTS);
@@ -141,10 +141,12 @@ function replaceCache(key, list) {
 }
 
 /**
- * Carga (o recarga forzada) una colección desde storage (sync vía getData).
+ * Lectura sync de caché en memoria.
+ * Con IndexedDB no puede hidratar (IDB es async): usar loadCacheAsync.
+ * Si el backend es localStorage, hidrata desde LS (fallback).
  * @param {string} key - valor de STG_KEYS (ej. STG_KEYS.PRODUCTS)
  * @param {Object} [options]
- * @param {boolean} [options.force=false] - si true, lee storage aunque ya esté loaded
+ * @param {boolean} [options.force=false]
  * @returns {Object[]}
  */
 function loadCache(key, options) {
@@ -157,8 +159,17 @@ function loadCache(key, options) {
     return CACHE[key];
   }
 
+  const backend =
+    typeof Storage !== "undefined" && Storage && Storage.name
+      ? Storage.name
+      : "localStorage";
+
+  if (backend === "indexedDB") {
+    // No marcar loaded: el próximo loadCacheAsync puede hidratar desde IDB
+    return CACHE[key] || [];
+  }
+
   const stgKey = CACHE_STORAGE_KEYS[key];
-  // Mismo formato que LocalStorageProvider (JSON). No usar getData (default []).
   let raw = null;
   try {
     const item = localStorage.getItem(stgKey);
@@ -265,20 +276,21 @@ function removeFromCache(key, id) {
 // ---------------------------------------------------------------------------
 
 /**
- * Carga la caché de productos desde storage.
- * @returns {Object[]}
+ * Carga la caché de productos desde Storage (async).
+ * @returns {Promise<Object[]>}
  */
-function loadProductsCache() {
-  return loadCache(STG_KEYS.PRODUCTS);
+async function loadProductsCache() {
+  return loadCacheAsync(STG_KEYS.PRODUCTS);
 }
 
 /**
  * Obtiene un producto de la caché por id.
+ * Si la caché aún no está hidratada, no lee LS (HU15).
  * @param {string} productId
  * @returns {Object|null}
  */
 function getProductFromCache(productId) {
-  if (!isCacheLoaded(STG_KEYS.PRODUCTS)) loadCache(STG_KEYS.PRODUCTS);
+  if (!isCacheLoaded(STG_KEYS.PRODUCTS)) return null;
   return getByIdFromCache(STG_KEYS.PRODUCTS, productId);
 }
 

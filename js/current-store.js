@@ -1,38 +1,58 @@
 // ===============================
 // Punto de venta actual (contexto global)
 // UI + persistencia. Aún no filtra pantallas ni cálculos.
-// Stores: repositorio. currentStoreId: settings / localStorage.
+// Stores: repositorio. currentStoreId: Storage (IDB) + memoria sync.
 // ===============================
 
 const ID_CURRENT_STORE_SELECT = "currentStoreSelect";
+
+/** Copia en memoria para lecturas sync (getCurrentStoreId). Hidratar al boot. */
+let currentStoreIdMem = null;
+
+/**
+ * Normaliza un id de PV a string o null
+ * @param {any} id
+ * @returns {string|null}
+ */
+function normalizeCurrentStoreId(id) {
+  if (id == null || id === "") return null;
+  const s = String(id).trim();
+  return s || null;
+}
+
+/**
+ * Hidrata currentStoreIdMem desde Storage (llamar en initAppPersistence)
+ * @returns {Promise<string|null>}
+ */
+async function hydrateCurrentStoreIdFromStorage() {
+  if (typeof getCurrentStoreIdSetting === "function") {
+    currentStoreIdMem = normalizeCurrentStoreId(await getCurrentStoreIdSetting());
+    return currentStoreIdMem;
+  }
+  currentStoreIdMem = null;
+  return null;
+}
 
 /**
  * Obtiene el id del punto de venta seleccionado (sync, UI)
  * @returns {string|null}
  */
 function getCurrentStoreId() {
-  try {
-    const raw = localStorage.getItem(STG_KEYS.CURRENT_STORE_ID);
-    if (raw == null || raw === "") return null;
-    const parsed = JSON.parse(raw);
-    return typeof parsed === "string" && parsed.trim() ? parsed.trim() : null;
-  } catch (_) {
-    return null;
-  }
+  return currentStoreIdMem;
 }
 
 /**
- * Guarda el id del punto de venta seleccionado
+ * Guarda el id del punto de venta seleccionado (memoria + Storage)
  * @param {string|null|undefined} id
  * @returns {void}
  */
 function setCurrentStoreId(id) {
-  if (!id) {
-    localStorage.removeItem(STG_KEYS.CURRENT_STORE_ID);
-    return;
+  currentStoreIdMem = normalizeCurrentStoreId(id);
+  if (typeof saveCurrentStoreIdSetting === "function") {
+    void saveCurrentStoreIdSetting(currentStoreIdMem).catch((err) =>
+      console.error("[current-store] saveCurrentStoreIdSetting", err)
+    );
   }
-  // Mismo formato que Storage/LocalStorageProvider (JSON)
-  localStorage.setItem(STG_KEYS.CURRENT_STORE_ID, JSON.stringify(String(id)));
 }
 
 /**

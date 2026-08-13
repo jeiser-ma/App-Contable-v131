@@ -7,9 +7,9 @@
  * Calcula y muestra todas las métricas del dashboard
  * @returns {void}
  */
-function onHomePageLoaded() {
+async function onHomePageLoaded() {
   console.log("onHomePageLoaded execution");
-  loadProductsCache();
+  await loadProductsCache();
 
   // Usar setTimeout para asegurar que el DOM esté completamente renderizado
   setTimeout(() => {
@@ -295,24 +295,13 @@ function getTomorrow(date) {
  */
 function resolveSalaryPercentage() {
   if (typeof getSalaryPercentage === "function") {
-    // settings.js pisa getSalaryPercentage en layout; home no redefine
     try {
       return getSalaryPercentage();
     } catch (_) {
-      /* follow fallback */
+      return 1.5;
     }
   }
-  try {
-    const raw = localStorage.getItem(STG_KEYS.SALARY_PERCENTAGE);
-    if (raw == null || raw === "") return 1.7;
-    const parsed = JSON.parse(raw);
-    if (parsed === null || parsed === undefined || Number.isNaN(Number(parsed))) {
-      return 1.7;
-    }
-    return Number(parsed);
-  } catch (_) {
-    return 1.7;
-  }
+  return 1.5;
 }
 
 /**

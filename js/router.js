@@ -176,6 +176,23 @@ async function loadModuleControl(name) {
  */
 document.addEventListener("DOMContentLoaded", () => {
   if (document.getElementById(ID_PAGES_CONTAINER)) {
+    void bootLayoutApp();
+  }
+});
+
+/**
+ * Boot del layout: persistencia (IDB + HU15 + HU16) y luego UI.
+ * @returns {Promise<void>}
+ */
+async function bootLayoutApp() {
+  if (typeof initAppPersistence === "function") {
+    try {
+      await initAppPersistence();
+    } catch (err) {
+      console.error("[router] initAppPersistence", err);
+    }
+  }
+
     // Cargar los componentes compartidos:
     // - modal confirm-delete
     // - componente snackbar
@@ -220,9 +237,8 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Configurando navegación");
     setupNavigation();
 
-    // Selector de punto de venta (contexto global; aún sin filtrar pantallas)
-    if (typeof initCurrentStoreSelector === "function") {
-      initCurrentStoreSelector();
-    }
+  // Selector de punto de venta (contexto global; aún sin filtrar pantallas)
+  if (typeof initCurrentStoreSelector === "function") {
+    await initCurrentStoreSelector();
   }
-});
+}

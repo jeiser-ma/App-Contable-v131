@@ -13,6 +13,15 @@
  * Los repositorios definen el default (lista vacía, etc.).
  */
 const LocalStorageProvider = {
+  /** @type {string} */
+  name: "localStorage",
+
+  /**
+   * No-op: localStorage no requiere abrir conexión.
+   * @returns {Promise<void>}
+   */
+  async ready() {},
+
   /**
    * @param {string} key
    * @returns {Promise<any|null>}

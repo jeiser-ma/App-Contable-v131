@@ -62,7 +62,7 @@ function isInventoryClosed(inv) {
  */
 async function onInventoryPageLoaded() {
   console.log("onInventoryPageLoaded execution");
-  loadProductsCache();
+  await loadProductsCache();
 
   // Establecer fecha por defecto (hoy)
   const today = new Date().toISOString().split("T")[0];

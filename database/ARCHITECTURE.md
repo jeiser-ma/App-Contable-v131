@@ -20,7 +20,9 @@ database/
 ├── providers/
 │   ├── storage-provider.js      ← elige provider activo (HU02 ✅)
 │   ├── local-storage.provider.js  ← HU02 ✅
-│   └── indexeddb.provider.js    ← stub hasta HU14
+│   ├── indexeddb.provider.js    ← HU14 ✅ (activo en HU15)
+│   ├── ls-to-idb.migration.js     ← HU15 ✅
+│   └── product-to-stock.migration.js ← HU16 ✅
 ├── repositories/
 │   ├── base.repository.js       ← contrato común (HU05): getById / upsert / …
 │   ├── products.repository.js
@@ -100,7 +102,7 @@ await Storage.clear(["products"]) // solo esas
 await Storage.exists(key)        // boolean
 ```
 
-`Storage` === `StorageProvider` === implementación activa (`LocalStorageProvider` hoy).
+`Storage` === `StorageProvider` === `IndexedDBProvider` (HU15; fallback LS si no hay IDB).
 
 El provider trabaja a nivel de **clave completa** (ej. toda la lista `"products"`).
 `getById` / `setById` del legado `storage.js` **no van aquí**: son lógica de colección → viven en repositorios (HU05+).
@@ -135,10 +137,21 @@ Así IndexedDB (HU14) no obliga a reescribir callers otra vez.
     - ✅ expenses, movements, inventory, products (+ undo)
     - ✅ accounting, finances
     - ✅ home, exports/imports, list-counter
-    - Legado aceptable: `getData`/`setData` solo en `storage.js` (API), `auth.js` (login index), `loadCache` sync (usa getData; repos usan `loadCacheAsync`/`Storage`)
-    - `getSalaryPercentage` / `getCurrentStoreId` leen localStorage en el mismo formato JSON que Storage (sync UI)
-14. **HU14** IndexedDB Provider
-15. **HU15** Migración LocalStorage → IndexedDB
+    - Legado: `getData`/`setData` en `storage.js` + `auth.js` (login / credentials)
+14. **HU14** IndexedDB Provider ✅
+15. **HU15** Migración LocalStorage → IndexedDB ✅
+    - `STORAGE_BACKEND = "indexedDB"`
+    - `ls-to-idb.migration.js`: copia `STG_KEYS` (salvo credentials/logged) LS → IDB, flag `appContable.idbMigrated`, borra esas claves de LS
+    - Boot layout: `initAppPersistence()` antes de `loadPage`
+    - `getSalaryPercentage` / `getCurrentStoreId`: memoria hidratada desde Storage
+    - `loadCache` sync no lee LS si el backend es IDB; `loadProductsCache` → `loadCacheAsync`
+    - Auth (`credentials` / `logged`) sigue en LS
+16. **HU16** Migración productos → catálogo + stock ✅
+    - One-shot `product-to-stock.migration.js` **después** de HU15
+    - Flag `appContable.stockMigrated` (LS, no es `STG_KEYS`)
+    - Backfill: una fila `SCHEMAS.stock` por producto en el PV actual (no pisa filas existentes)
+    - Dual-write en crear/editar/cantidad/undo; baja de producto borra stock
+    - No se quitan `quantity`/`price`/`um` del producto (fallback de UI)
 
 ### HU13 — Orden de migración recomendado
 
@@ -195,8 +208,8 @@ store.createdAt = new Date().toISOString();
 
 | Hoy | Destino |
 |-----|---------|
-| `js/storage.js` (`getData`/`setData`) | Sigue en uso en UI; provider listo para repos (HU05+) |
-| `Storage` / `StorageProvider` | ✅ LocalStorage detrás |
+| `js/storage.js` (`getData`/`setData`) | Solo auth / index / legado; datos de negocio vía repos |
+| `Storage` / `StorageProvider` | ✅ IndexedDB (HU15; fallback LS) |
 | `SCHEMAS.*` | ✅ Plantillas HU03 |
 | `CACHE.*` | ✅ Caché unificada HU04 (`database/cache/cache.js`) |
 | `BaseRepository` / `createRepository` | ✅ Contrato HU05 |
@@ -260,7 +273,7 @@ await clearProducts();
 | accounting | `STG_KEYS.ACCOUNTING` | `getAccountingByDate`, `createAccounting`, `saveAccounting` |
 | stores | `STG_KEYS.STORES` | `getActiveStores`, `createStore`, `saveStore` |
 | finances | `STG_KEYS.FINANCES` | `getFinanceByDate`, `createFinance`, `saveFinance` |
-| stock | `STG_KEYS.STOCK` | `getStockByStoreAndProduct`, `createStock`, `saveStock` |
+| stock | `STG_KEYS.STOCK` | `getStockByStoreAndProduct`, `createStock`, `saveStock`, `upsertStockForProduct` |
 | settings | varias | `getCurrencies` / `saveCurrencies`, `getUnits`, `getCurrentStoreIdSetting`, … |
 
 Settings no usa `BaseRepository` (arrays de string / escalares vía `Storage`).
@@ -271,8 +284,11 @@ Orden de scripts:
 
 1. `js/storage.js` — `STG_KEYS` + legado `getData`/`setData`
 2. `database/providers/local-storage.provider.js`
-3. `database/providers/storage-provider.js`
-4. `database/schemas/schemas.js` luego `*.schema.js`
-5. `database/cache/cache.js`
-6. `database/repositories/base.repository.js`
-7. `database/repositories/*.repository.js` (products … settings)
+3. `database/providers/indexeddb.provider.js` (HU14)
+4. `database/providers/storage-provider.js` (`STORAGE_BACKEND = "indexedDB"`)
+5. `database/providers/ls-to-idb.migration.js` (HU15)
+6. `database/schemas/schemas.js` luego `*.schema.js`
+7. `database/cache/cache.js`
+8. `database/repositories/base.repository.js`
+9. `database/repositories/*.repository.js` (products … settings)
+10. `database/providers/product-to-stock.migration.js` (HU16; tras repos)

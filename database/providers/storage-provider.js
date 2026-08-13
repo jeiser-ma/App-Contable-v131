@@ -1,19 +1,36 @@
 /**
  * StorageProvider — punto único de elección del proveedor de persistencia.
- * HU02: activo → LocalStorageProvider.
- * HU14: cambiar a IndexedDBProvider.
+ *
+ * HU15: activo → IndexedDBProvider.
+ * Fallback a LocalStorage si IndexedDB no está disponible.
  *
  * Uso:
- *   await StorageProvider.get(STG_KEYS.PRODUCTS)
- *   await StorageProvider.save(STG_KEYS.PRODUCTS, list)
- *   await StorageProvider.remove(STG_KEYS.PRODUCTS)
- *   await StorageProvider.clear()              // claves STG_KEYS
- *   await StorageProvider.clear(["products"])  // solo esas
- *   await StorageProvider.exists(STG_KEYS.PRODUCTS)
+ *   await Storage.ready()
+ *   await Storage.get(STG_KEYS.PRODUCTS)
+ *   await Storage.save(STG_KEYS.PRODUCTS, list)
  *
- * Alias corto (opcional): Storage === StorageProvider
+ * Alias: Storage === StorageProvider
  */
-const StorageProvider = LocalStorageProvider;
+const STORAGE_BACKEND = "indexedDB";
+
+function resolveStorageProvider() {
+  if (STORAGE_BACKEND === "indexedDB") {
+    const idbOk =
+      typeof IndexedDBProvider !== "undefined" &&
+      typeof indexedDB !== "undefined" &&
+      indexedDB;
+    if (!idbOk) {
+      console.warn(
+        "[StorageProvider] IndexedDB no disponible; usando LocalStorage"
+      );
+      return LocalStorageProvider;
+    }
+    return IndexedDBProvider;
+  }
+  return LocalStorageProvider;
+}
+
+const StorageProvider = resolveStorageProvider();
 
 /** Alias corto; mismo objeto que StorageProvider */
 const Storage = StorageProvider;
