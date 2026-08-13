@@ -148,6 +148,104 @@ async function refreshCurrentStoreSelector() {
   }
 }
 
+/** Página activa del layout (para recargar al cambiar PV). */
+let CURRENT_LAYOUT_PAGE = null;
+
+/**
+ * Indica si un storeId pertenece al PV actual (tras backfill, comparación estricta).
+ * Sin PV actual, no filtra.
+ * @param {string|null|undefined} itemStoreId
+ * @param {string|null|undefined} [targetStoreId]
+ * @returns {boolean}
+ */
+function belongsToCurrentStore(itemStoreId, targetStoreId) {
+  const target =
+    targetStoreId !== undefined && targetStoreId !== null
+      ? normalizeCurrentStoreId(targetStoreId)
+      : getCurrentStoreId();
+  if (!target) return true;
+  const sid = normalizeCurrentStoreId(itemStoreId);
+  if (!sid) return false;
+  return sid === target;
+}
+
+/**
+ * Filtra una lista por storeId del PV actual (o target).
+ * @param {Object[]} list
+ * @param {string|null|undefined} [targetStoreId]
+ * @returns {Object[]}
+ */
+function filterByCurrentStore(list, targetStoreId) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((item) => belongsToCurrentStore(item && item.storeId, targetStoreId));
+}
+
+/**
+ * Asegura filas de stock en el PV actual para todo el catálogo (qty 0 si faltan).
+ * Copia um/precios/umbrales de otra fila del mismo producto si existe (HU21).
+ * @param {string} [storeId]
+ * @returns {Promise<number>} filas creadas
+ */
+async function ensureStockRowsForCurrentStore(storeId) {
+  const resolved =
+    normalizeCurrentStoreId(storeId) ||
+    getCurrentStoreId() ||
+    (typeof ensureCurrentStoreId === "function"
+      ? await ensureCurrentStoreId()
+      : null);
+  if (!resolved || typeof getAllProducts !== "function") return 0;
+  if (typeof upsertStockForProduct !== "function") return 0;
+
+  const products = await getAllProducts();
+  let created = 0;
+  for (const product of products) {
+    if (!product?.id) continue;
+    const existing =
+      typeof getStockByStoreAndProduct === "function"
+        ? await getStockByStoreAndProduct(resolved, product.id)
+        : null;
+    if (existing?.id) continue;
+
+    let template = null;
+    if (typeof getStockByProductId === "function") {
+      const rows = await getStockByProductId(product.id);
+      template = (rows || []).find((s) => s && s.id) || null;
+    }
+    await upsertStockForProduct(product, resolved, {
+      quantity: 0,
+      um: template?.um || "",
+      lowStockThreshold: template?.lowStockThreshold ?? 0,
+      criticalStockThreshold: template?.criticalStockThreshold ?? 0,
+      prices:
+        template?.prices && typeof template.prices === "object"
+          ? { ...template.prices }
+          : {},
+    });
+    created++;
+  }
+  return created;
+}
+
+/**
+ * Recarga stock/caché y la página activa tras cambiar de PV (HU21).
+ * @returns {Promise<void>}
+ */
+async function onCurrentStoreChanged() {
+  try {
+    await ensureStockRowsForCurrentStore();
+    if (typeof loadCacheAsync === "function" && typeof STG_KEYS !== "undefined") {
+      await loadCacheAsync(STG_KEYS.STOCK, { force: true });
+      await loadCacheAsync(STG_KEYS.PRODUCTS, { force: true });
+    }
+    const page = CURRENT_LAYOUT_PAGE || PAGE_HOME;
+    if (typeof loadPage === "function") {
+      await loadPage(page);
+    }
+  } catch (err) {
+    console.error("[current-store] onCurrentStoreChanged", err);
+  }
+}
+
 /**
  * Inicializa el selector del navbar (opciones + change)
  * @returns {Promise<void>}
@@ -161,6 +259,6 @@ async function initCurrentStoreSelector() {
   select.onchange = () => {
     const id = select.value || null;
     setCurrentStoreId(id);
-    // Más adelante: recargar pantalla activa / filtrar por store
+    void onCurrentStoreChanged();
   };
 }

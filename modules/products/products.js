@@ -23,6 +23,8 @@ const ID_PRODUCT_CODES_CONTAINER = "productCodesContainer";
 const ID_BTN_ADD_CODE_SCAN = "btnAddCodeScan";
 const ID_INPUT_NAME = "inputName";
 const ID_INPUT_PRICE = "inputPrice";
+const ID_PRODUCT_PRICES_CONTAINER = "productPricesContainer";
+const ID_PRODUCT_PRICES_ERROR = "productPricesError";
 const ID_INPUT_UM = "inputUM";
 const ID_INPUT_QUANTITY = "inputQuantity";
 const ID_INPUT_LOW_STOCK_THRESHOLD = "inputLowStockThreshold";
@@ -106,6 +108,7 @@ async function migrateProductsToCodes() {
 async function onProductsPageLoaded() {
   await migrateProductsToCodes();
   await loadProductsCache();
+  if (typeof loadStockCache === "function") await loadStockCache();
 
   // Cargar modal de productos
   console.log("Loading product-modal");
@@ -128,7 +131,7 @@ async function onProductsPageLoaded() {
   };
 
   // Renderizar la lista de productos
-  renderProducts();
+  await renderProducts();
 }
 
 
@@ -266,6 +269,71 @@ async function setupProductsControls() {
 }
 
 /**
+ * Renderiza inputs de precio por moneda del catálogo (HU22).
+ * @param {Object} [prices={}]
+ * @returns {Promise<void>}
+ */
+async function renderProductPriceInputs(prices) {
+  const container = document.getElementById(ID_PRODUCT_PRICES_CONTAINER);
+  if (!container) return;
+  container.replaceChildren();
+
+  let currencies = [];
+  if (typeof getCurrencies === "function") {
+    currencies = await getCurrencies();
+  }
+  if (!Array.isArray(currencies) || currencies.length === 0) {
+    currencies =
+      typeof DEFAULT_CURRENCIES !== "undefined"
+        ? [...DEFAULT_CURRENCIES]
+        : ["CUP"];
+  }
+
+  const priceMap = prices && typeof prices === "object" ? prices : {};
+  currencies.forEach((code) => {
+    const raw = String(code || "").toUpperCase();
+    if (!raw) return;
+    const row = document.createElement("div");
+    row.className = "input-group input-group-sm";
+    const label = document.createElement("span");
+    label.className = "input-group-text";
+    label.textContent = raw;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.step = "0.01";
+    input.className = "form-control form-control-sm product-price-input";
+    input.dataset.currency = raw;
+    input.id = `inputPrice_${raw}`;
+    const val = priceMap[raw];
+    input.value =
+      val != null && Number.isFinite(Number(val)) ? formatTo2(Number(val)) : "";
+    row.appendChild(label);
+    row.appendChild(input);
+    container.appendChild(row);
+  });
+}
+
+/**
+ * Lee precios del modal → { CODE: number }.
+ * @returns {Object}
+ */
+function readProductPricesFromModal() {
+  const container = document.getElementById(ID_PRODUCT_PRICES_CONTAINER);
+  const prices = {};
+  if (!container) return prices;
+  container.querySelectorAll(".product-price-input").forEach((input) => {
+    const code = String(input.dataset.currency || "").toUpperCase();
+    if (!code) return;
+    const raw = String(input.value || "").trim();
+    if (raw === "") return;
+    const n = roundTo2(parseFloat(raw));
+    if (Number.isFinite(n) && n >= 0) prices[code] = n;
+  });
+  return prices;
+}
+
+/**
  * Abre el modal para agregar un nuevo producto
  * Resetea el formulario y configura el título del modal
  * @param {string} [initialCode] - Código opcional (ej. escaneado) para pre-cargar
@@ -279,6 +347,8 @@ async function openAddProductModal(initialCode) {
   setModalHeader(MODAL_PRODUCTS, false);
   // Limpiar errores de validación anteriores del modal
   clearInputErrors([ID_INPUT_NAME, ID_INPUT_LOW_STOCK_THRESHOLD, ID_INPUT_CRITICAL_STOCK_THRESHOLD]);
+  const pricesErr = document.getElementById(ID_PRODUCT_PRICES_ERROR);
+  if (pricesErr) pricesErr.textContent = "";
 
   // Resetear el formulario del modal
   // Establecer el valor del input de ID
@@ -287,8 +357,7 @@ async function openAddProductModal(initialCode) {
   renderProductCodesBadges();
   // Establecer el valor del input de nombre
   setInputValue(ID_INPUT_NAME, "");
-  // Establecer el valor del input de precio
-  setInputValue(ID_INPUT_PRICE, "");
+  await renderProductPriceInputs({});
   // Establecer el valor del input de umbral de stock bajo
   setInputValue(ID_INPUT_LOW_STOCK_THRESHOLD, "");
   // Establecer el valor del input de umbral de stock crítico
@@ -307,8 +376,11 @@ async function openAddProductModal(initialCode) {
  * @returns {Promise<void>}
  */
 async function openEditProductModal(id) {
-  // Obtener el producto a editar
-  const product = getProductFromCache(id);
+  // Vista catálogo + stock del PV (HU17)
+  const product =
+    typeof getEnrichedProductById === "function"
+      ? await getEnrichedProductById(id)
+      : getProductFromCache(id);
   if (!product) return;
   
   // Resetear el estado de edición porque es un nuevo producto y no hay producto para editar
@@ -319,6 +391,8 @@ async function openEditProductModal(id) {
 
   // Limpiar errores de validación anteriores del modal
   clearInputErrors([ID_INPUT_NAME, ID_INPUT_LOW_STOCK_THRESHOLD, ID_INPUT_CRITICAL_STOCK_THRESHOLD]);
+  const pricesErr = document.getElementById(ID_PRODUCT_PRICES_ERROR);
+  if (pricesErr) pricesErr.textContent = "";
 
   // Establecer el valor del input de ID
   setInputValue(ID_PRODUCT_ID, product.id);
@@ -326,8 +400,7 @@ async function openEditProductModal(id) {
   renderProductCodesBadges();
   // Establecer el valor del input de nombre
   setInputValue(ID_INPUT_NAME, product.name);
-  // Establecer el valor del input de precio
-  setInputValue(ID_INPUT_PRICE, formatTo2(product.price));
+  await renderProductPriceInputs(product.prices || {});
   // Establecer el valor del input de umbral de stock bajo
   setInputValue(ID_INPUT_LOW_STOCK_THRESHOLD, product.lowStockThreshold || "");
   // Establecer el valor del input de umbral de stock crítico
@@ -609,8 +682,14 @@ function renderProductsList(products) {
 
     const metaEl = node.querySelector(".product-meta");
     if (metaEl) {
+      const pricesText =
+        p.prices && typeof p.prices === "object" && Object.keys(p.prices).length
+          ? Object.keys(p.prices)
+              .map((c) => `${c} ${formatTo2(p.prices[c])}`)
+              .join(" · ")
+          : formatTo2(p.price);
       metaEl.innerHTML = `<i class="bi ${quantityIcon} ${quantityColor}"></i> <span class="${quantityColor}">${formatTo2(p.quantity)}</span> 
-      • <i class="bi bi-currency-dollar"></i> ${formatTo2(p.price)} 
+      • <i class="bi bi-currency-dollar"></i> ${pricesText} 
       • <i class="bi bi-beaker small"></i> ${p.um}`;
     }
 
@@ -630,12 +709,15 @@ function renderProductsList(products) {
 }
 
 /**
- * Función principal que renderiza los productos
+ * Función principal que renderiza los productos (vista catálogo + stock del PV).
  * Filtra, ordena y renderiza usando PRODUCTS_STATE
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function renderProducts() {
-  const allProducts = CACHE.products || [];
+async function renderProducts() {
+  const allProducts =
+    typeof loadProductsWithStockForCurrentStore === "function"
+      ? await loadProductsWithStockForCurrentStore()
+      : CACHE.products || [];
 
   // Primero filtrar, luego ordenar
   const filtered = filterProducts(allProducts);
@@ -654,7 +736,7 @@ async function saveProductFromModal() {
   const id = getInputValue(ID_PRODUCT_ID);
   const codesRaw = [...productModalCodes];
   const name = getInputValue(ID_INPUT_NAME).trim();
-  const price = parseFloat(getInputValue(ID_INPUT_PRICE));
+  const prices = readProductPricesFromModal();
   const um = getInputValue(ID_INPUT_UM).trim();
   const lowStockThreshold = Number(getInputValue(ID_INPUT_LOW_STOCK_THRESHOLD));
   const criticalStockThreshold = Number(getInputValue(ID_INPUT_CRITICAL_STOCK_THRESHOLD));
@@ -664,6 +746,8 @@ async function saveProductFromModal() {
 
   // Limpiar errores de validación anteriores del modal
   clearInputErrors([ID_INPUT_NAME, ID_INPUT_LOW_STOCK_THRESHOLD, ID_INPUT_CRITICAL_STOCK_THRESHOLD]);
+  const pricesErr = document.getElementById(ID_PRODUCT_PRICES_ERROR);
+  if (pricesErr) pricesErr.textContent = "";
 
   // Validaciones
   // nombre obligatorio
@@ -679,6 +763,13 @@ async function saveProductFromModal() {
     )
   ) {
     setInputError(ID_INPUT_NAME, "Ya existe un producto con ese nombre");
+    return;
+  }
+
+  if (Object.keys(prices).length === 0) {
+    if (pricesErr) {
+      pricesErr.textContent = "Ingresá al menos un precio en alguna moneda";
+    }
     return;
   }
 
@@ -700,72 +791,59 @@ async function saveProductFromModal() {
     return;
   }
 
-  const priceRounded = roundTo2(price);
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
 
   // Si hay un id de producto es una edición si no, es un alta de producto
   if (id) {
-    // EDITAR
+    // EDITAR — catálogo puro (HU18); operativos solo en stock
     const productToEdit =
       getProductFromCache(id) || (await getProductById(id));
     if (!productToEdit?.id) {
       setInputError(ID_PRODUCT_ID, "El producto no existe");
       return;
     }
-    const prices =
-      typeof pricesFromProduct === "function"
-        ? pricesFromProduct({
-            price: priceRounded,
-            prices: productToEdit.prices,
-          })
-        : {
-            [(typeof DEFAULT_CURRENCIES !== "undefined" &&
-              DEFAULT_CURRENCIES[0]) ||
-              "CUP"]: priceRounded,
-          };
-    const updatedProduct = {
+    const existingStock =
+      storeId && typeof getStockByStoreAndProduct === "function"
+        ? await getStockByStoreAndProduct(storeId, id)
+        : null;
+
+    const catalogProduct = toCatalogProduct({
       ...productToEdit,
       codes: codesRaw,
       name,
-      price: priceRounded,
-      prices,
+    });
+    await saveProduct(catalogProduct);
+    syncProductInCache(catalogProduct);
+    await upsertStockForProduct(catalogProduct, storeId, {
       um,
+      quantity: existingStock ? Number(existingStock.quantity) || 0 : 0,
       lowStockThreshold,
       criticalStockThreshold,
-    };
-    await saveProduct(updatedProduct);
-    syncProductInCache(updatedProduct);
-    await syncCurrentStoreStockFromProduct(updatedProduct);
-
+      prices,
+    });
   } else {
-    // ALTA
-    const prices =
-      typeof pricesFromProduct === "function"
-        ? pricesFromProduct({ price: priceRounded })
-        : {
-            [(typeof DEFAULT_CURRENCIES !== "undefined" &&
-              DEFAULT_CURRENCIES[0]) ||
-              "CUP"]: priceRounded,
-          };
+    // ALTA — catálogo + fila de stock del PV
     const newProduct = createProduct({
       codes: codesRaw,
       name,
-      price: priceRounded,
-      prices,
+    });
+    await saveProduct(newProduct);
+    syncProductInCache(newProduct);
+    await upsertStockForProduct(newProduct, storeId, {
       um,
       quantity: 0,
       lowStockThreshold,
       criticalStockThreshold,
+      prices,
     });
-    await saveProduct(newProduct);
-    syncProductInCache(newProduct);
-    await syncCurrentStoreStockFromProduct(newProduct);
   }
 
   // Cerrar el modal
   toggleModalModules();
 
   // Renderizar la lista de productos
-  renderProducts();
+  await renderProducts();
 }
 
 // ===============================
@@ -810,36 +888,42 @@ async function isProductLinked(prodId) {
 }
 
 /**
- * Actualiza la cantidad de un producto sumando (o restando) un valor a la cantidad actual.
+ * Actualiza la cantidad en stock del PV actual (HU18: no escribe en products).
  * @param {string} productId - ID del producto
  * @param {number} quantityDelta - Cantidad a sumar (positivo = aumentar, negativo = disminuir)
- * @returns {Promise<number|undefined>} Nueva cantidad del producto, 
- * o undefined si el producto no existe, 
+ * @returns {Promise<number|undefined>} Nueva cantidad,
+ * o undefined si el producto no existe,
  * o -1 si la nueva cantidad es negativa (error)
  */
 async function updateProductQuantity(productId, quantityDelta) {
-  if (!productId) return undefined; // Error: ID de producto no válido
+  if (!productId) return undefined;
 
   const product =
     getProductFromCache(productId) || (await getProductById(productId));
-  if (!product?.id) return undefined; // Error: producto no encontrado
+  if (!product?.id) return undefined;
 
-  const currentQuantity = product.quantity ?? 0;
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+  if (!storeId || typeof getStockByStoreAndProduct !== "function") {
+    return undefined;
+  }
+
+  let stockRow = await getStockByStoreAndProduct(storeId, productId);
+  const currentQuantity = stockRow ? Number(stockRow.quantity) || 0 : 0;
   const newQuantity = roundTo2(currentQuantity + quantityDelta);
 
-  // Si la nueva cantidad es negativa, no se actualiza
-  if (newQuantity < 0) return -1; // Error: cantidad negativa
+  if (newQuantity < 0) return -1;
 
-  // Actualizar la cantidad del producto (dual-write: catálogo + stock del PV)
-  const updatedProduct = { ...product, quantity: newQuantity };
-  await saveProduct(updatedProduct);
-  syncProductInCache(updatedProduct);
-  await syncCurrentStoreStockFromProduct(updatedProduct, { quantity: newQuantity });
+  if (stockRow && stockRow.id) {
+    await saveStock({ ...stockRow, quantity: newQuantity });
+  } else if (typeof upsertStockForProduct === "function") {
+    await upsertStockForProduct(product, storeId, { quantity: newQuantity });
+  }
   return newQuantity;
 }
 
 /**
- * Dual-write HU16: persiste stock del PV actual sin quitar campos del producto.
+ * Persiste stock del PV actual a partir de un producto / overrides (HU16+).
  * @param {Object} product
  * @param {Object} [overrides]
  * @returns {Promise<Object|null>}
@@ -893,12 +977,16 @@ async function confirmDeleteProduct() {
     return;
   }
 
-  const deleted = await getProductById(idToDel);
+  // Vista enriquecida para poder restaurar stock en undo
+  const deleted =
+    typeof getEnrichedProductById === "function"
+      ? await getEnrichedProductById(idToDel)
+      : await getProductById(idToDel);
   if (!deleted?.id) return;
 
-  // Guardamos estado undo
+  // Guardamos estado undo (catálogo + datos operativos para recrear stock)
   UNDO_STATE.data = deleted;
-  UNDO_STATE.type = PAGE_PRODUCTS; // Nombre de la colección en storage
+  UNDO_STATE.type = PAGE_PRODUCTS;
 
   await deleteProduct(idToDel);
   if (typeof deleteStockByProductId === "function") {
@@ -913,6 +1001,6 @@ async function confirmDeleteProduct() {
   DELETE_STATE.id = null;
 
   hideConfirmModal();
-  renderProducts();
+  await renderProducts();
   showSnackbar("Producto eliminado");
 }

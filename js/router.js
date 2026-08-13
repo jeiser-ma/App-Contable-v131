@@ -13,6 +13,9 @@
  * @returns {void}
  */
 async function loadPage(page) {
+  if (typeof CURRENT_LAYOUT_PAGE !== "undefined") {
+    CURRENT_LAYOUT_PAGE = page;
+  }
   const pageConfig = PAGES_CONFIG[page];
   const isModule = pageConfig?.isModule || false;
 

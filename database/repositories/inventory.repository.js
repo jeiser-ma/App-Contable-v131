@@ -29,10 +29,22 @@ async function getInventoryById(id) {
  * @param {string} date - YYYY-MM-DD
  * @returns {Promise<Object[]>}
  */
-async function getInventoryByDate(date) {
+async function getInventoryByDate(date, storeId) {
   if (!date) return [];
   const all = await inventoryRepository.getAll();
-  return all.filter((inv) => inv && inv.date === date);
+  const target =
+    storeId !== undefined
+      ? storeId
+      : typeof getCurrentStoreId === "function"
+        ? getCurrentStoreId()
+        : null;
+  return all.filter((inv) => {
+    if (!inv || inv.date !== date) return false;
+    if (typeof belongsToCurrentStore === "function") {
+      return belongsToCurrentStore(inv.storeId, target);
+    }
+    return !target || inv.storeId === target;
+  });
 }
 
 /**
@@ -46,17 +58,28 @@ async function getInventoryByProductId(productId) {
 }
 
 /**
- * Un conteo concreto producto + fecha (el más reciente si hubiera varios).
+ * Un conteo concreto producto + fecha (+ PV). El más reciente si hubiera varios.
  * @param {string} productId
  * @param {string} date
+ * @param {string} [storeId]
  * @returns {Promise<Object|null>}
  */
-async function getInventoryByProductAndDate(productId, date) {
+async function getInventoryByProductAndDate(productId, date, storeId) {
   if (!productId || !date) return null;
   const all = await inventoryRepository.getAll();
-  const matches = all.filter(
-    (inv) => inv && inv.productId === productId && inv.date === date
-  );
+  const target =
+    storeId !== undefined
+      ? storeId
+      : typeof getCurrentStoreId === "function"
+        ? getCurrentStoreId()
+        : null;
+  const matches = all.filter((inv) => {
+    if (!inv || inv.productId !== productId || inv.date !== date) return false;
+    if (typeof belongsToCurrentStore === "function") {
+      return belongsToCurrentStore(inv.storeId, target);
+    }
+    return !target || inv.storeId === target;
+  });
   if (matches.length === 0) return null;
   return matches[matches.length - 1];
 }

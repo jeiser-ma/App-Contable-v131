@@ -284,6 +284,32 @@ async function loadProductsCache() {
 }
 
 /**
+ * Carga la caché de stock desde Storage (async). HU17.
+ * @returns {Promise<Object[]>}
+ */
+async function loadStockCache() {
+  return loadCacheAsync(STG_KEYS.STOCK);
+}
+
+/**
+ * Productos + stock del PV actual (caché). Hidrata si hace falta.
+ * @returns {Promise<Object[]>}
+ */
+async function loadProductsWithStockForCurrentStore() {
+  await loadProductsCache();
+  await loadStockCache();
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+  if (typeof getProductsWithStockFromCache === "function") {
+    return getProductsWithStockFromCache(storeId);
+  }
+  if (typeof getProductsWithStockForStore === "function") {
+    return getProductsWithStockForStore(storeId);
+  }
+  return CACHE.products || [];
+}
+
+/**
  * Obtiene un producto de la caché por id.
  * Si la caché aún no está hidratada, no lee LS (HU15).
  * @param {string} productId

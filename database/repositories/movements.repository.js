@@ -31,10 +31,22 @@ async function getMovementById(id) {
  * @param {string} date
  * @returns {Promise<Object[]>}
  */
-async function getMovementsByDate(date) {
+async function getMovementsByDate(date, storeId) {
   if (!date) return [];
   const all = await movementsRepository.getAll();
-  return all.filter((m) => m && m.date === date);
+  const target =
+    storeId !== undefined
+      ? storeId
+      : typeof getCurrentStoreId === "function"
+        ? getCurrentStoreId()
+        : null;
+  return all.filter((m) => {
+    if (!m || m.date !== date) return false;
+    if (typeof belongsToCurrentStore === "function") {
+      return belongsToCurrentStore(m.storeId, target);
+    }
+    return !target || m.storeId === target;
+  });
 }
 
 /**

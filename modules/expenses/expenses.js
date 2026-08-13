@@ -339,6 +339,11 @@ async function confirmDeleteExpense() {
 function filterExpenses(expenses) {
   let filtered = [...expenses];
 
+  // Filtro por PV actual (HU20)
+  if (typeof filterByCurrentStore === "function") {
+    filtered = filterByCurrentStore(filtered);
+  }
+
   // Filtro por texto de búsqueda (concepto)
   if (EXPENSES_STATE.searchText) {
     filtered = filtered.filter((e) =>

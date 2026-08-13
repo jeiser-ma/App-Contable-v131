@@ -10,6 +10,7 @@
 async function onHomePageLoaded() {
   console.log("onHomePageLoaded execution");
   await loadProductsCache();
+  if (typeof loadStockCache === "function") await loadStockCache();
 
   // Usar setTimeout para asegurar que el DOM esté completamente renderizado
   setTimeout(() => {
@@ -31,17 +32,21 @@ async function onHomePageLoaded() {
 async function updateDashboard() {
   console.log("updateDashboard ejecutado");
 
-  // Obtener datos
-  const products = CACHE.products || [];
-  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+  // Vista catálogo + stock del PV (HU17)
+  const products =
+    typeof loadProductsWithStockForCurrentStore === "function"
+      ? await loadProductsWithStockForCurrentStore()
+      : CACHE.products || [];
+  let movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
     ? (CACHE.movements || [])
     : await getAllMovements();
-  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+  let expenses = isCacheLoaded(STG_KEYS.EXPENSES)
     ? (CACHE.expenses || [])
     : await getAllExpenses();
-  const inventory = isCacheLoaded(STG_KEYS.INVENTORY)
-    ? (CACHE.inventory || [])
-    : await getAllInventory();
+  if (typeof filterByCurrentStore === "function") {
+    movements = filterByCurrentStore(movements);
+    expenses = filterByCurrentStore(expenses);
+  }
 
   console.log("Total productos:", products.length);
 
@@ -118,7 +123,12 @@ function formatCurrency(amount) {
  * @returns {string}
  */
 function getWhatsAppStockMessage() {
-  const products = CACHE.products || [];
+  const products =
+    typeof getProductsWithStockFromCache === "function"
+      ? getProductsWithStockFromCache(
+          typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null
+        )
+      : CACHE.products || [];
   const critical = products.filter((p) => {
     const criticalThreshold = p.criticalStockThreshold ?? 0;
     return (p.quantity ?? 0) <= criticalThreshold;
@@ -361,7 +371,10 @@ async function updateAccountingSummary() {
  * @returns {Promise<Object>} Objeto de contabilidad
  */
 async function createTodayAccounting(today, yesterday) {
-  const products = CACHE.products || [];
+  const products =
+    typeof loadProductsWithStockForCurrentStore === "function"
+      ? await loadProductsWithStockForCurrentStore()
+      : CACHE.products || [];
   const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
     ? (CACHE.movements || [])
     : await getAllMovements();

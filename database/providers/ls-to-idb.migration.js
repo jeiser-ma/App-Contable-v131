@@ -110,6 +110,21 @@ async function initAppPersistence() {
   if (typeof migrateProductsToCatalogAndStock === "function") {
     await migrateProductsToCatalogAndStock();
   }
+  if (typeof stripLegacyFieldsFromProducts === "function") {
+    await stripLegacyFieldsFromProducts();
+  }
+  if (typeof backfillMissingStoreIdsOnRecords === "function") {
+    await backfillMissingStoreIdsOnRecords();
+  }
+  if (typeof ensureStockRowsForCurrentStore === "function") {
+    await ensureStockRowsForCurrentStore();
+  }
+  if (typeof loadCacheAsync === "function" && typeof STG_KEYS !== "undefined") {
+    await loadCacheAsync(STG_KEYS.STOCK, { force: true });
+  }
+  if (typeof loadCacheAsync === "function" && typeof STG_KEYS !== "undefined") {
+    await loadCacheAsync(STG_KEYS.PRODUCTS, { force: true });
+  }
 }
 
 /**
@@ -136,13 +151,21 @@ async function getPersistenceDiagnostics() {
     typeof LS_STOCK_MIGRATED_FLAG !== "undefined"
       ? LS_STOCK_MIGRATED_FLAG
       : "appContable.stockMigrated";
+  const hu19Flag =
+    typeof LS_CATALOG_CLEANED_FLAG !== "undefined"
+      ? LS_CATALOG_CLEANED_FLAG
+      : "appContable.catalogCleaned";
 
   let products = 0;
   let stock = 0;
+  let catalogClean = true;
   try {
     if (typeof getAllProducts === "function") {
       const list = await getAllProducts();
       products = Array.isArray(list) ? list.length : 0;
+      if (Array.isArray(list) && typeof productHasLegacyOperationalFields === "function") {
+        catalogClean = !list.some(productHasLegacyOperationalFields);
+      }
     }
   } catch (_) {
     products = 0;
@@ -160,6 +183,8 @@ async function getPersistenceDiagnostics() {
     backend,
     hu15: localStorage.getItem(hu15Flag) === "1",
     hu16: localStorage.getItem(hu16Flag) === "1",
+    hu19: localStorage.getItem(hu19Flag) === "1" || catalogClean,
+    catalogClean,
     products,
     stock,
   };

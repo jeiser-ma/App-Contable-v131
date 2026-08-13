@@ -111,6 +111,7 @@ let currentAccounting = null;
 async function onAccountingPageLoaded() {
   console.log("onAccountingPageLoaded execution");
   await loadProductsCache();
+  if (typeof loadStockCache === "function") await loadStockCache();
 
   // Cargar modales de agregar ventas
   // Cargar modal de ventas en efectivo
@@ -387,9 +388,8 @@ async function createNewAccounting(date) {
   // Obtener el porcentaje de salario configurado
   const salaryPercentage = getSalaryPercentage();
 
-  // Crear la nueva contabilidad
-  currentAccounting = {
-    id: crypto.randomUUID(),
+  // Crear la nueva contabilidad (con storeId del PV actual — HU20)
+  currentAccounting = createAccounting({
     date: date,
     products: accountingProducts,
     expenses: accountingExpenses,
@@ -403,9 +403,8 @@ async function createNewAccounting(date) {
     nominalSalary: null,
     realSalary: null,
     closed: false,
-    createdAt: new Date().toISOString(),
-    closedAt: null
-  };
+    closedAt: null,
+  });
 
   // Calcular el salario nominal
   await calculateNominalSalary();
@@ -463,14 +462,25 @@ async function refreshOpenAccountingData() {
  */
 async function buildAccountingProductsForDate(date) {
   const yesterday = getYesterday(date);
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
   const allAccounting = isCacheLoaded(STG_KEYS.ACCOUNTING)
     ? (CACHE.accounting || [])
     : await getAllAccounting();
   const accounting =
     (Array.isArray(allAccounting)
-      ? allAccounting.find((a) => a.date === date)
+      ? allAccounting.find(
+          (a) =>
+            a &&
+            a.date === date &&
+            (typeof belongsToCurrentStore !== "function" ||
+              belongsToCurrentStore(a.storeId, storeId))
+        )
       : null) ||
-    (currentAccounting && currentAccounting.date === date
+    (currentAccounting &&
+    currentAccounting.date === date &&
+    (typeof belongsToCurrentStore !== "function" ||
+      belongsToCurrentStore(currentAccounting.storeId, storeId))
       ? currentAccounting
       : null);
 
@@ -481,13 +491,20 @@ async function buildAccountingProductsForDate(date) {
       : [];
   }
 
-  const products = CACHE.products || [];
-  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+  const products =
+    typeof getProductsWithStockFromCache === "function"
+      ? getProductsWithStockFromCache(storeId)
+      : CACHE.products || [];
+  let movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
     ? (CACHE.movements || [])
     : await getAllMovements();
-  const inventory = isCacheLoaded(STG_KEYS.INVENTORY)
+  let inventory = isCacheLoaded(STG_KEYS.INVENTORY)
     ? (CACHE.inventory || [])
     : await getAllInventory();
+  if (typeof filterByCurrentStore === "function") {
+    movements = filterByCurrentStore(movements, storeId);
+    inventory = filterByCurrentStore(inventory, storeId);
+  }
   const lastAccounting = await getLastAccounting(date);
 
   // Productos ya en contabilidad abierta de este día (import / estado previo)
@@ -602,11 +619,16 @@ async function buildAccountingProductsForDate(date) {
  * @returns {Object|null} Contabilidad cerrada o null
  */
 async function getLastAccounting(beforeDate) {
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
   const allAccounting = isCacheLoaded(STG_KEYS.ACCOUNTING)
     ? (CACHE.accounting || [])
     : await getAllAccounting();
 
   let closedAccountings = allAccounting.filter((a) => a.closed === true);
+  if (typeof filterByCurrentStore === "function") {
+    closedAccountings = filterByCurrentStore(closedAccountings, storeId);
+  }
 
   if (beforeDate) {
     closedAccountings = closedAccountings.filter((a) => a.date < beforeDate);
@@ -638,12 +660,16 @@ async function getLastAccounting(beforeDate) {
  */
 async function buildAccountingExpensesForDate(date) {
   const yesterday = getYesterday(date);
-  const expenses = isCacheLoaded(STG_KEYS.EXPENSES)
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+  let expenses = isCacheLoaded(STG_KEYS.EXPENSES)
     ? (CACHE.expenses || [])
     : await getAllExpenses();
+  if (typeof filterByCurrentStore === "function") {
+    expenses = filterByCurrentStore(expenses, storeId);
+  }
 
-  let expensesForDate = expenses.filter(e => e.date === yesterday).map(e => ({ ...e }));
-  return expensesForDate;
+  return expenses.filter((e) => e.date === yesterday).map((e) => ({ ...e }));
 }
 
 
@@ -1236,34 +1262,29 @@ function confirmCloseAccounting() {
 }
 
 /**
- * Actualiza el stock (quantity) de cada producto con el todayInventory
- * de la contabilidad que se está cerrando. Dual-write HU16: producto + stock del PV.
+ * Actualiza el stock del PV con el todayInventory al cerrar contabilidad (HU18: solo stock).
  * @returns {Promise<void>}
  */
 async function updateProductsAccountingStock() {
   if (!currentAccounting?.products?.length) return;
+  if (typeof upsertStockForProduct !== "function") return;
 
-  const productsUpdated = [...CACHE.products];
-  currentAccounting.products.forEach((accProduct) => {
-    const product = productsUpdated.find((p) => p.id === accProduct.productId);
-    if (product) {
-      product.quantity = accProduct.todayInventory ?? 0;
-    }
-  });
+  const storeId =
+    typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+  if (!storeId) return;
 
-  await saveAllProducts(productsUpdated);
-  replaceProductsCache(productsUpdated);
-
-  if (typeof upsertStockForProduct === "function") {
-    const storeId =
-      typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
-    for (const accProduct of currentAccounting.products) {
-      const product = productsUpdated.find((p) => p.id === accProduct.productId);
-      if (!product?.id) continue;
-      await upsertStockForProduct(product, storeId, {
-        quantity: product.quantity,
-      });
-    }
+  for (const accProduct of currentAccounting.products) {
+    if (!accProduct?.productId) continue;
+    const product =
+      (typeof getProductFromCache === "function" &&
+        getProductFromCache(accProduct.productId)) ||
+      (typeof getProductById === "function"
+        ? await getProductById(accProduct.productId)
+        : null);
+    if (!product?.id) continue;
+    await upsertStockForProduct(product, storeId, {
+      quantity: accProduct.todayInventory ?? 0,
+    });
   }
 }
 

@@ -711,6 +711,18 @@ async function renderFinanceStoresSection() {
       if (isInactive) nameEl.classList.add("text-muted");
     }
 
+    const currentId =
+      typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
+    if (currentId && entry.storeId === currentId) {
+      const cardRoot =
+        node.querySelector(".card") ||
+        node.querySelector(".list-group-item") ||
+        node.firstElementChild;
+      if (cardRoot && cardRoot.classList) {
+        cardRoot.classList.add("border-primary");
+      }
+    }
+
     const badgeEl = node.querySelector(".finance-store-inactive-badge");
     if (badgeEl) {
       badgeEl.classList.toggle("d-none", !isInactive);

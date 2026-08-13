@@ -51,6 +51,31 @@ function isInventoryClosed(inv) {
   return inv?.status === "CLOSED";
 }
 
+/**
+ * Catálogo + stock del PV actual (HU17). Fallback: CACHE.products.
+ * @returns {Object[]}
+ */
+function getInventoryProductsView() {
+  if (typeof getProductsWithStockFromCache === "function") {
+    return getProductsWithStockFromCache(
+      typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null
+    );
+  }
+  return CACHE.products || [];
+}
+
+/**
+ * Un producto enriquecido con stock del PV (HU17).
+ * @param {string} productId
+ * @returns {Promise<Object|null>}
+ */
+async function getInventoryProductView(productId) {
+  if (typeof getEnrichedProductById === "function") {
+    return getEnrichedProductById(productId);
+  }
+  return getProductFromCache(productId);
+}
+
 // ===============================
 // Hook que llama el router
 // ===============================
@@ -63,6 +88,7 @@ function isInventoryClosed(inv) {
 async function onInventoryPageLoaded() {
   console.log("onInventoryPageLoaded execution");
   await loadProductsCache();
+  if (typeof loadStockCache === "function") await loadStockCache();
 
   // Establecer fecha por defecto (hoy)
   const today = new Date().toISOString().split("T")[0];
@@ -183,8 +209,8 @@ function handleScanInventoryCode() {
  */
 async function openAddInventoryModal(productId) {
 
-  // Obtener el producto
-  const product = getProductFromCache(productId);
+  // Vista catálogo + stock del PV (HU17)
+  const product = await getInventoryProductView(productId);
   if (!product) {
     console.error("Producto no encontrado");
     return;
@@ -345,8 +371,10 @@ function getValidatedInventoryValuesFromModal() {
 
 
 
-  // Validar que la suma no supere el stock total del producto
-  const product = getProductFromCache(INVENTORY_STATE.elementToEdit);
+  // Validar que la suma no supere el stock total del producto (vista HU17)
+  const product = getInventoryProductsView().find(
+    (p) => p && p.id === INVENTORY_STATE.elementToEdit
+  );
   if (product) {
     const productStock = product.quantity || 0;
     const totalInventory =
@@ -418,7 +446,7 @@ async function openDeleteInventoryModal(inventoryId) {
     return;
   }
 
-  const products = CACHE.products || [];
+  const products = getInventoryProductsView();
   const product = products.find((p) => p.id === inv.productId);
   const productName = product ? product.name : "Inventario";
 
@@ -539,7 +567,7 @@ function renderPendingInventoryList(products, allComplete = false) {
 function renderPartialInventoryList(inventoryCounts) {
   const list = document.getElementById(ID_PARTIAL_INVENTORY_LIST);
   const template = document.getElementById(ID_PARTIAL_CARD_TEMPLATE);
-  const products = CACHE.products || [];
+  const products = getInventoryProductsView();
 
   if (!list || !template) return;
 
@@ -637,7 +665,7 @@ function renderPartialInventoryList(inventoryCounts) {
 function renderCompletedInventoryList(inventoryCounts) {
   const list = document.getElementById(ID_COMPLETED_INVENTORY_LIST);
   const template = document.getElementById(ID_COMPLETED_CARD_TEMPLATE);
-  const products = CACHE.products || [];
+  const products = getInventoryProductsView();
 
   if (!list || !template) return;
 
@@ -701,7 +729,7 @@ function renderCompletedInventoryList(inventoryCounts) {
 async function renderInventory() {
   const date =
     INVENTORY_STATE.filterDate || new Date().toISOString().split("T")[0];
-  const allProducts = CACHE.products || [];
+  const allProducts = getInventoryProductsView();
   const dayInventoryRaw = await getInventoryByDate(date);
 
   // Filtrar productos por búsqueda

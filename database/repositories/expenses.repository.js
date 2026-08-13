@@ -29,10 +29,22 @@ async function getExpenseById(id) {
  * @param {string} date - YYYY-MM-DD
  * @returns {Promise<Object[]>}
  */
-async function getExpensesByDate(date) {
+async function getExpensesByDate(date, storeId) {
   if (!date) return [];
   const all = await expensesRepository.getAll();
-  return all.filter((e) => e && e.date === date);
+  const target =
+    storeId !== undefined
+      ? storeId
+      : typeof getCurrentStoreId === "function"
+        ? getCurrentStoreId()
+        : null;
+  return all.filter((e) => {
+    if (!e || e.date !== date) return false;
+    if (typeof belongsToCurrentStore === "function") {
+      return belongsToCurrentStore(e.storeId, target);
+    }
+    return !target || e.storeId === target;
+  });
 }
 
 /**

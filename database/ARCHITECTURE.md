@@ -152,6 +152,30 @@ Así IndexedDB (HU14) no obliga a reescribir callers otra vez.
     - Backfill: una fila `SCHEMAS.stock` por producto en el PV actual (no pisa filas existentes)
     - Dual-write en crear/editar/cantidad/undo; baja de producto borra stock
     - No se quitan `quantity`/`price`/`um` del producto (fallback de UI)
+17. **HU17** Lecturas de stock por punto de venta ✅
+    - Helpers: `enrichProductWithStock`, `getProductsWithStockForStore/FromCache`, `getEnrichedProductById`
+    - Home, productos, inventario, movimientos y contabilidad leen qty/precio/UM/umbrales desde `stock` del PV actual (fallback al producto)
+    - `loadStockCache` / `loadProductsWithStockForCurrentStore`; boot hidrata `STOCK` tras HU16
+    - Escritura sigue en dual-write (HU16); migraciones HU15/HU16 **se conservan**
+18. **HU18** Escritura catálogo puro ✅
+    - `toCatalogProduct` / `saveProduct` solo id·name·codes·createdAt
+    - Crear/editar: operativos solo en `stock`; `updateProductQuantity` y cierre de contabilidad solo tocan stock
+19. **HU19** Limpiar campos legado en products ✅
+    - One-shot `stripLegacyFieldsFromProducts` tras HU16; flag `appContable.catalogCleaned`
+    - **No elimina** código ni flags de HU15/HU16
+20. **HU20** Filtrar módulos por `storeId` ✅
+    - Listados movimientos/gastos + queries date+store; contabilidad por `(date, storeId)`; inventario por PV
+    - Backfill one-shot `storeId` nulo → PV actual (`appContable.storeIdBackfilled`)
+21. **HU21** Stock al cambiar de PV ✅
+    - Selector: `ensureStockRowsForCurrentStore` + recarga página activa
+22. **HU22** Precios multi-moneda en UI ✅
+    - Modal producto: un input por moneda → `stock.prices`
+23. **HU23** Import/export alineado ✅
+    - Export: `_catalogStock` resumen; import: `reconcileCatalogStockAfterImport` (todos los PV)
+
+### Itinerario siguiente
+
+Épica multi-PV / catálogo+stock **cerrada** en HU23. Próximos temas posibles fuera de esta épica: UX finanzas por PV, moneda activa en home/contabilidad, tests E2E.
 
 ### HU13 — Orden de migración recomendado
 
@@ -273,7 +297,7 @@ await clearProducts();
 | accounting | `STG_KEYS.ACCOUNTING` | `getAccountingByDate`, `createAccounting`, `saveAccounting` |
 | stores | `STG_KEYS.STORES` | `getActiveStores`, `createStore`, `saveStore` |
 | finances | `STG_KEYS.FINANCES` | `getFinanceByDate`, `createFinance`, `saveFinance` |
-| stock | `STG_KEYS.STOCK` | `getStockByStoreAndProduct`, `createStock`, `saveStock`, `upsertStockForProduct` |
+| stock | `STG_KEYS.STOCK` | `getStockByStoreAndProduct`, `createStock`, `saveStock`, `upsertStockForProduct`, `enrichProductWithStock`, `getProductsWithStockForStore` |
 | settings | varias | `getCurrencies` / `saveCurrencies`, `getUnits`, `getCurrentStoreIdSetting`, … |
 
 Settings no usa `BaseRepository` (arrays de string / escalares vía `Storage`).

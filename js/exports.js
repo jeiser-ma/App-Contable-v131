@@ -72,6 +72,29 @@ async function getAppState() {
       state._diagnostics = null;
     }
   }
+  // HU23: resumen catálogo vs stock para validar backups
+  try {
+    const products = Array.isArray(state[STG_KEYS.PRODUCTS])
+      ? state[STG_KEYS.PRODUCTS]
+      : [];
+    const stock = Array.isArray(state[STG_KEYS.STOCK])
+      ? state[STG_KEYS.STOCK]
+      : [];
+    const productIds = new Set(products.map((p) => p && p.id).filter(Boolean));
+    const stockProductIds = new Set(
+      stock.map((s) => s && s.productId).filter(Boolean)
+    );
+    state._catalogStock = {
+      products: products.length,
+      stockRows: stock.length,
+      productsMissingStock: [...productIds].filter((id) => !stockProductIds.has(id))
+        .length,
+      orphanStockRows: stock.filter((s) => s && !productIds.has(s.productId))
+        .length,
+    };
+  } catch (_) {
+    state._catalogStock = null;
+  }
   return state;
 }
 

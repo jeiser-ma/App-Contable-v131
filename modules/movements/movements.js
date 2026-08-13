@@ -63,6 +63,7 @@ window.MOVEMENTS_STATE = MOVEMENTS_STATE;
 async function onMovementsPageLoaded() {
   console.log("onMovementsPageLoaded execution");
   await loadProductsCache();
+  if (typeof loadStockCache === "function") await loadStockCache();
 
   // Cargar modal de movimientos
   console.log("Loading movement-modal");
@@ -369,6 +370,11 @@ function initMovementFilters() {
 function filterMovements(movements) {
   let filtered = [...movements];
 
+  // Filtro por PV actual (HU20)
+  if (typeof filterByCurrentStore === "function") {
+    filtered = filterByCurrentStore(filtered);
+  }
+
   // Filtro por texto de búsqueda (busca en nombre del producto)
   if (MOVEMENTS_STATE.searchText) {
     filtered = filtered.filter((m) => {
@@ -564,8 +570,14 @@ async function saveMovementFromModal() {
     return;
   }
 
-  // Validar que el producto existe
-  const product = CACHE.products.find(
+  // Validar que el producto existe (vista catálogo + stock HU17)
+  const productsView =
+    typeof getProductsWithStockFromCache === "function"
+      ? getProductsWithStockFromCache(
+          typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null
+        )
+      : CACHE.products || [];
+  const product = productsView.find(
     (p) => p.name.toLowerCase() === productName.toLowerCase()
   );
   // Si el producto no existe, mostrar error
@@ -612,7 +624,7 @@ async function saveMovementFromModal() {
     if (availableStock < quantity) {
       setInputError(
         ID_MOVEMENT_QUANTITY,
-        `Stock insuficiente. Disponible: ${formatTo2(product.quantity)}`
+        `Stock insuficiente. Disponible: ${formatTo2(availableStock)}`
       );
       return;
     }

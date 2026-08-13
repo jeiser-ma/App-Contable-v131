@@ -150,14 +150,25 @@ async function undoDelete() {
         await renderMovements();
       }
     } else if (type === PAGE_PRODUCTS || type === STG_KEYS.PRODUCTS) {
+      // payload puede venir enriquecido (undo tras baja): catálogo + datos para stock
       await saveProduct(payload);
       if (typeof syncProductInCache === "function" && payload) {
-        syncProductInCache(payload);
+        syncProductInCache(
+          typeof toCatalogProduct === "function"
+            ? toCatalogProduct(payload)
+            : payload
+        );
       }
       if (typeof upsertStockForProduct === "function" && payload) {
         const storeId =
           typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
-        await upsertStockForProduct(payload, storeId);
+        await upsertStockForProduct(payload, storeId, {
+          um: payload.um,
+          quantity: payload.quantity,
+          lowStockThreshold: payload.lowStockThreshold,
+          criticalStockThreshold: payload.criticalStockThreshold,
+          prices: payload.prices,
+        });
       }
       if (typeof renderProducts === "function") {
         await renderProducts();

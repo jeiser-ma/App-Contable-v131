@@ -25,14 +25,27 @@ async function getAccountingById(id) {
 }
 
 /**
- * Registro(s) de contabilidad de una fecha. Si hay varios, devuelve el último.
+ * Contabilidad de una fecha para el PV (unicidad lógica date+storeId).
  * @param {string} date - YYYY-MM-DD
+ * @param {string} [storeId]
  * @returns {Promise<Object|null>}
  */
-async function getAccountingByDate(date) {
+async function getAccountingByDate(date, storeId) {
   if (!date) return null;
   const all = await accountingRepository.getAll();
-  const matches = all.filter((a) => a && a.date === date);
+  const target =
+    storeId !== undefined
+      ? storeId
+      : typeof getCurrentStoreId === "function"
+        ? getCurrentStoreId()
+        : null;
+  const matches = all.filter((a) => {
+    if (!a || a.date !== date) return false;
+    if (typeof belongsToCurrentStore === "function") {
+      return belongsToCurrentStore(a.storeId, target);
+    }
+    return !target || a.storeId === target;
+  });
   if (matches.length === 0) return null;
   return matches[matches.length - 1];
 }

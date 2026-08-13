@@ -37,14 +37,13 @@
             </div>
           </div>
 
-          <div class="mb-2">
-            <label for="inputPrice" class="form-label">Precio</label>
-            <input type="number" class="form-control form-control-sm" id="inputPrice" min="0" step="0.01" />
-            <div class="invalid-feedback">
-              El precio debe ser mayor a 0
-              <!-- el mensaje se establece por JS -->
-            </div>
-          </div>
+      <div class="mb-2" id="productPricesGroup">
+        <label class="form-label">Precios por moneda</label>
+        <div id="productPricesContainer" class="d-flex flex-column gap-2">
+          <!-- Inputs por moneda (HU22) -->
+        </div>
+        <div class="invalid-feedback d-block" id="productPricesError"></div>
+      </div>
 
           <div class="mb-2">
             <label class="form-label">Unidad de medida</label>

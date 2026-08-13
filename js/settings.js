@@ -34,6 +34,7 @@ const ID_APP_LAST_UPDATE_TEXT = "appLastUpdateDateText";
 const ID_PERSISTENCE_BACKEND_TEXT = "persistenceBackendText";
 const ID_PERSISTENCE_HU15_TEXT = "persistenceHu15Text";
 const ID_PERSISTENCE_HU16_TEXT = "persistenceHu16Text";
+const ID_PERSISTENCE_HU19_TEXT = "persistenceHu19Text";
 const ID_BTN_EXPORT_APP_STATE = "btnExportAppState";
 const ID_BTN_IMPORT_APP_STATE = "btnImportAppState";
 const ID_INPUT_IMPORT_APP_STATE = "inputImportAppState";
@@ -160,10 +161,10 @@ async function resetAppDataKeepingProducts() {
   const source = isCacheLoaded(STG_KEYS.PRODUCTS)
     ? (CACHE.products || [])
     : await getAllProducts();
-  const products = source.map((p) => ({
-    ...p,
-    quantity: 0,
-  }));
+  const products =
+    typeof toCatalogProduct === "function"
+      ? source.map((p) => toCatalogProduct(p)).filter(Boolean)
+      : source;
 
   for (const key of OPERATIONAL_STATE_KEYS) {
     if (typeof Storage !== "undefined" && Storage) {
@@ -174,10 +175,14 @@ async function resetAppDataKeepingProducts() {
     }
   }
 
-  await saveAllProducts(products);
+  if (typeof saveAllProductsAsCatalog === "function") {
+    await saveAllProductsAsCatalog(products);
+  } else {
+    await saveAllProducts(products);
+  }
   replaceProductsCache(products);
 
-  // Stock del PV: conservar um/precios/umbrales, dejar cantidad en 0
+  // Stock: conservar um/precios/umbrales, dejar cantidad en 0
   if (typeof getAllStock === "function" && typeof saveAllStock === "function") {
     const stockList = await getAllStock();
     const zeroedStock = (stockList || []).map((s) => ({
@@ -241,10 +246,16 @@ function setupImportAppStateListener() {
       if (typeof refreshCurrentStoreSelector === "function") {
         await refreshCurrentStoreSelector();
       }
-      if (typeof backfillMissingStockFromProducts === "function") {
+      if (typeof reconcileCatalogStockAfterImport === "function") {
+        await reconcileCatalogStockAfterImport();
+      } else if (typeof backfillMissingStockFromProducts === "function") {
         const storeId =
           typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null;
         await backfillMissingStockFromProducts(storeId);
+      }
+      if (typeof loadCacheAsync === "function" && typeof STG_KEYS !== "undefined") {
+        await loadCacheAsync(STG_KEYS.STOCK, { force: true });
+        await loadCacheAsync(STG_KEYS.PRODUCTS, { force: true });
       }
     } else {
       if (typeof showToast === "function") {
@@ -300,6 +311,7 @@ async function setupPersistenceDiagnostics() {
   const backendOk = d.backend === "indexedDB";
   const hu15Ok = d.hu15 && backendOk;
   const hu16Ok = d.hu16 && (d.products === 0 || d.stock >= d.products);
+  const hu19Ok = !!(d.hu19 || d.catalogClean);
 
   setPersistenceStatusPill(
     ID_PERSISTENCE_BACKEND_TEXT,
@@ -315,6 +327,11 @@ async function setupPersistenceDiagnostics() {
     ID_PERSISTENCE_HU16_TEXT,
     `${hu16Ok ? "Listo" : d.hu16 ? "Incompleto" : "Pendiente"} · ${d.stock}/${d.products}`,
     hu16Ok
+  );
+  setPersistenceStatusPill(
+    ID_PERSISTENCE_HU19_TEXT,
+    hu19Ok ? "Limpio" : "Pendiente",
+    hu19Ok
   );
 }
 

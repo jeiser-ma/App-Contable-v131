@@ -98,7 +98,29 @@ function createProduct(partial) {
     product.createdAt = new Date().toISOString();
   }
 
-  return product;
+  return toCatalogProduct(product);
+}
+
+/**
+ * Reduce un producto a campos de catálogo (HU18).
+ * Descarta quantity, price, um, umbrales, prices, etc.
+ * @param {Object} product
+ * @returns {Object|null}
+ */
+function toCatalogProduct(product) {
+  if (!product || !product.id) return null;
+  let codes = [];
+  if (Array.isArray(product.codes)) {
+    codes = product.codes.map((c) => String(c));
+  } else if (typeof product.code === "string" && product.code.trim()) {
+    codes = [product.code.trim()];
+  }
+  return {
+    id: product.id,
+    name: product.name != null ? String(product.name) : "",
+    codes,
+    createdAt: product.createdAt || null,
+  };
 }
 
 /**
@@ -110,7 +132,9 @@ async function saveProduct(product) {
   if (!product || !product.id) {
     throw new Error("[products.repository] saveProduct: product.id es obligatorio");
   }
-  return productsRepository.upsert(product);
+  const catalog =
+    typeof toCatalogProduct === "function" ? toCatalogProduct(product) : product;
+  return productsRepository.upsert(catalog);
 }
 
 /**
@@ -121,6 +145,18 @@ async function saveProduct(product) {
  */
 async function saveAllProducts(list) {
   return productsRepository.saveAll(list);
+}
+
+/**
+ * Reemplaza toda la colección dejando solo campos de catálogo (HU18/HU19).
+ * @param {Object[]} list
+ * @returns {Promise<Object[]>}
+ */
+async function saveAllProductsAsCatalog(list) {
+  const normalized = Array.isArray(list)
+    ? list.map((p) => toCatalogProduct(p)).filter(Boolean)
+    : [];
+  return productsRepository.saveAll(normalized);
 }
 
 /**
