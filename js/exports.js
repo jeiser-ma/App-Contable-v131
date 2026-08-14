@@ -236,18 +236,32 @@ function csvHeadersOnly(headerMap) {
 }
 
 /**
- * Exporta la contabilidad diaria a CSV según el formato acordado
+ * Exporta la contabilidad diaria a CSV según el formato acordado.
+ * Todos los datos (productos, gastos, movimientos) son del PV de la contabilidad
+ * o, en su defecto, del PV seleccionado en el navbar.
  * @param {Object} accounting - Registro de contabilidad del día
- * @param {Array<Object>} [productsCatalog] - Catálogo de productos (legacy; se usa CACHE.products)
  * @returns {Promise<boolean>} true si se generó la descarga
  */
 async function exportAccountingToCsv(accounting) {
   if (!accounting) return false;
 
-  const salesPoint =
-    typeof getSalesPoint === "function" ? await getSalesPoint() : "";
+  const storeId =
+    (accounting.storeId != null && String(accounting.storeId).trim()) ||
+    (typeof getCurrentStoreId === "function" ? getCurrentStoreId() : null) ||
+    null;
+
+  let salesPoint = "";
+  if (storeId && typeof getStoreById === "function") {
+    const store = await getStoreById(storeId);
+    if (store?.name) salesPoint = String(store.name).trim();
+  }
+  if (!salesPoint && typeof getSalesPoint === "function") {
+    salesPoint = (await getSalesPoint()) || "";
+  }
+  if (!salesPoint) salesPoint = "Sin PV";
+
   const isoDate = accounting.date || new Date().toISOString().slice(0, 10);
-  // Catálogo solo para resolver nombres; la fila de CSV es accounting.products (ya filtrada al guardar)
+  // Catálogo solo para resolver nombres; la fila de CSV es accounting.products
   const products = (typeof CACHE !== "undefined" && CACHE.products) || [];
   const productsById = new Map(products.map((p) => [p.id, p]));
 
@@ -283,28 +297,58 @@ async function exportAccountingToCsv(accounting) {
       ? arrayToCsv(productRows, { columns: productColumns, headerMap: productHeaderMap })
       : csvHeadersOnly(productHeaderMap);
 
-  const expenseRows = (accounting.expenses || []).map((e) =>
-    csvFixedRow([e.concept ?? "", csvExportNumber(e.amount)])
-  );
+  // Gastos del snapshot (ya del PV al construir la contabilidad).
+  // Si la línea no trae storeId, se confía en accounting.storeId.
+  const expenseSource = Array.isArray(accounting.expenses)
+    ? accounting.expenses
+    : [];
+  const expenseRows = expenseSource
+    .filter((e) => {
+      if (!storeId || !e || e.storeId == null || e.storeId === "") return true;
+      if (typeof belongsToCurrentStore === "function") {
+        return belongsToCurrentStore(e.storeId, storeId);
+      }
+      return String(e.storeId) === String(storeId);
+    })
+    .map((e) => csvFixedRow([e.concept ?? "", csvExportNumber(e.amount)]));
 
-  // Resolver Entradas y Salidas de ayer
+  // Entradas y Salidas de ayer — solo del mismo PV
   const yesterday = getYesterday(accounting.date);
-  const movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
+  let movements = isCacheLoaded(STG_KEYS.MOVEMENTS)
     ? (CACHE.movements || [])
     : await getAllMovements();
-  // Entradas de ayer
-  const yesterdayMovements = movements.filter(m => m.date === yesterday);
-  // Entradas de ayer
-  const yesterdayEntries = yesterdayMovements.filter(m => m.type === MOVEMENTS_TYPES.IN);
-  const entriesRows = (yesterdayEntries || []).map((en) => {
+  if (typeof filterByCurrentStore === "function") {
+    movements = filterByCurrentStore(movements, storeId);
+  } else if (storeId) {
+    movements = (movements || []).filter(
+      (m) => m && String(m.storeId) === String(storeId)
+    );
+  }
+
+  const yesterdayMovements = (movements || []).filter(
+    (m) => m && m.date === yesterday
+  );
+  const yesterdayEntries = yesterdayMovements.filter(
+    (m) => m.type === MOVEMENTS_TYPES.IN
+  );
+  const entriesRows = yesterdayEntries.map((en) => {
     const product = productsById.get(en.productId);
-    return csvFixedRow([product?.name ?? en.productId, csvExportNumber(en.quantity), en.note])
+    return csvFixedRow([
+      product?.name ?? en.productId,
+      csvExportNumber(en.quantity),
+      en.note,
+    ]);
   });
-  // Salidas de ayer
-  const yesterdayExits = yesterdayMovements.filter(m => m.type === MOVEMENTS_TYPES.OUT);
-  const existsRows = (yesterdayExits || []).map((ex) => {
+  const yesterdayExits = yesterdayMovements.filter(
+    (m) => m.type === MOVEMENTS_TYPES.OUT
+  );
+  const existsRows = yesterdayExits.map((ex) => {
     const product = productsById.get(ex.productId);
-    return csvFixedRow([product?.name ?? ex.productId, csvExportNumber(ex.quantity), ex.note])
+    return csvFixedRow([
+      product?.name ?? ex.productId,
+      csvExportNumber(ex.quantity),
+      ex.note,
+    ]);
   });
 
   const lines = [
